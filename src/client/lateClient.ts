@@ -45,13 +45,14 @@ export function unwrap<T>(result: { data?: T; error?: unknown }): T {
     throw new Error(`Late API error: ${errMsg}`);
   }
   const data = result.data as T;
-  // Late SDK wraps list responses in { posts: [...] }, { accounts: [...] }, etc.
-  // Auto-extract the nested array if the response is a single-key object with an array value.
+  // Late SDK wraps list responses in { posts: [...], pagination: {...} }, { accounts: [...], hasAnalyticsAccess: bool }, etc.
+  // Auto-extract the primary array from the response object.
   if (data && typeof data === 'object' && !Array.isArray(data)) {
-    const keys = Object.keys(data as Record<string, unknown>);
-    if (keys.length === 1) {
-      const val = (data as Record<string, unknown>)[keys[0]];
-      if (Array.isArray(val)) return val as T;
+    const obj = data as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    // Find the first key whose value is an array — that's the primary data
+    for (const key of keys) {
+      if (Array.isArray(obj[key])) return obj[key] as T;
     }
   }
   return data;
