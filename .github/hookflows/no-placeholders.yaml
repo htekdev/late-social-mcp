@@ -1,0 +1,56 @@
+name: no-placeholders
+description: Block TODO, FIXME, HACK, placeholder, and stub code from being committed
+
+on:
+  commit:
+    lifecycle: pre
+    paths:
+      - "src/**"
+      - "__tests__/**"
+
+blocking: true
+
+steps:
+  - name: Scan for placeholder code
+    run: |
+      $ErrorActionPreference = 'Stop'
+      $patterns = @(
+        'TODO',
+        'FIXME',
+        'HACK',
+        'XXX',
+        'needs implementation',
+        'not implemented',
+        'placeholder',
+        'throw new NotImplementedError',
+        'test\.todo\(',
+        'it\.skip\(',
+        'describe\.skip\(',
+        'test\.skip\('
+      )
+      $violations = @()
+      $files = git diff --cached --name-only --diff-filter=ACM | Where-Object { $_ -match '\.(ts|tsx)$' }
+      if (-not $files) {
+        Write-Host '✅ No TypeScript files staged — skipping placeholder check'
+        exit 0
+      }
+      foreach ($file in $files) {
+        if (-not (Test-Path $file)) { continue }
+        $lines = Get-Content $file -ErrorAction SilentlyContinue
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+          foreach ($pattern in $patterns) {
+            if ($lines[$i] -match $pattern) {
+              $violations += "${file}:$($i + 1): $($lines[$i].Trim())"
+            }
+          }
+        }
+      }
+      if ($violations.Count -gt 0) {
+        Write-Host '❌ Placeholder code detected. All code must be fully implemented before committing.'
+        Write-Host ''
+        foreach ($v in $violations) {
+          Write-Host "  $v"
+        }
+        exit 1
+      }
+      Write-Host "✅ No placeholder code found in $($files.Count) file(s)"

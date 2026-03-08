@@ -1,0 +1,24 @@
+name: lint-on-edit
+description: Run TypeScript type checking after editing source files
+
+on:
+  file:
+    lifecycle: post
+    paths:
+      - "src/**/*.ts"
+    types: [edit]
+
+blocking: true
+
+steps:
+  - name: TypeScript type check
+    run: |
+      $ErrorActionPreference = 'Stop'
+      Write-Host '🔍 Running TypeScript type check...'
+      npx tsc --noEmit 2>&1 | Tee-Object -Variable tscOutput
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host ''
+        Write-Host '❌ TypeScript type errors detected. Fix type errors before continuing.'
+        exit 1
+      }
+      Write-Host '✅ TypeScript type check passed'

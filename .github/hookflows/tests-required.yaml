@@ -1,0 +1,48 @@
+name: tests-required
+description: Verify tests pass with 80% minimum code coverage before committing
+
+on:
+  commit:
+    lifecycle: pre
+    paths:
+      - "src/**"
+
+blocking: true
+
+steps:
+  - name: Run tests with coverage
+    run: |
+      $ErrorActionPreference = 'Stop'
+      $staged = git diff --cached --name-only --diff-filter=ACM | Where-Object { $_ -match '^src/.*\.ts$' }
+      if (-not $staged) {
+        Write-Host '✅ No source files staged — skipping test gate'
+        exit 0
+      }
+      Write-Host '🧪 Running tests with coverage...'
+      npx vitest run --coverage 2>&1 | Tee-Object -Variable testOutput
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host ''
+        Write-Host '❌ Tests failed. Fix failing tests before committing.'
+        exit 1
+      }
+      $coverageSummary = Join-Path (Get-Location) 'coverage' 'coverage-summary.json'
+      if (Test-Path $coverageSummary) {
+        $summary = Get-Content $coverageSummary | ConvertFrom-Json
+        $total = $summary.total
+        $threshold = 80
+        $failures = @()
+        if ($total.statements.pct -lt $threshold) { $failures += "Statements: $($total.statements.pct)% (min: ${threshold}%)" }
+        if ($total.branches.pct -lt 75) { $failures += "Branches: $($total.branches.pct)% (min: 75%)" }
+        if ($total.functions.pct -lt $threshold) { $failures += "Functions: $($total.functions.pct)% (min: ${threshold}%)" }
+        if ($total.lines.pct -lt $threshold) { $failures += "Lines: $($total.lines.pct)% (min: ${threshold}%)" }
+        if ($failures.Count -gt 0) {
+          Write-Host ''
+          Write-Host '❌ Code coverage below threshold:'
+          foreach ($f in $failures) { Write-Host "  $f" }
+          exit 1
+        }
+        Write-Host "✅ Coverage meets thresholds — Statements: $($total.statements.pct)%, Branches: $($total.branches.pct)%, Functions: $($total.functions.pct)%, Lines: $($total.lines.pct)%"
+      } else {
+        Write-Host '⚠️ Coverage summary not found — ensure vitest coverage is configured with json-summary reporter'
+      }
+      Write-Host '✅ All tests passed with sufficient coverage'

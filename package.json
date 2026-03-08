@@ -1,0 +1,51 @@
+{
+  "name": "late-social-mcp",
+  "version": "0.1.0",
+  "description": "Comprehensive social media manager MCP server via Late API — smart scheduling, realignment, analytics, and engagement tools",
+  "type": "module",
+  "main": "bin/mcp-server.cjs",
+  "bin": {
+    "late-social-mcp": "bin/mcp-server.cjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bin/mcp-server.cjs",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/htekdev/late-social-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "social-media",
+    "late-api",
+    "scheduling",
+    "copilot",
+    "claude",
+    "ai-tools"
+  ],
+  "author": "htekdev",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/htekdev/late-social-mcp/issues"
+  },
+  "homepage": "https://github.com/htekdev/late-social-mcp#readme",
+  "dependencies": {
+    "@getlatedev/node": "^0.1.42",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "@vitest/coverage-v8": "^4.0.18",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
