@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "late-social": {
-      "command": "node",
-      "args": ["bin/mcp-server.cjs"],
-      "tools": ["*"]
-    }
-  }
-}

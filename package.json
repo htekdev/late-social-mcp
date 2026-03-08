@@ -1,6 +1,6 @@
 {
   "name": "late-social-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Comprehensive social media manager MCP server via Late API — smart scheduling, realignment, analytics, and engagement tools",
   "type": "module",
   "main": "bin/mcp-server.cjs",
@@ -11,7 +11,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bin/mcp-server.cjs",
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bin/mcp-server.cjs --banner:js=\"#!/usr/bin/env node\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
