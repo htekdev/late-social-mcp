@@ -36,7 +36,7 @@ export function toDisplayPlatform(platform: string): string {
   return DISPLAY_PLATFORM_MAP[platform.toLowerCase()] ?? platform.toLowerCase();
 }
 
-// Unwrap SDK response - throws on error
+// Unwrap SDK response - throws on error, extracts nested data
 export function unwrap<T>(result: { data?: T; error?: unknown }): T {
   if (result.error) {
     const errMsg = typeof result.error === 'object' && result.error !== null && 'error' in result.error
@@ -44,7 +44,17 @@ export function unwrap<T>(result: { data?: T; error?: unknown }): T {
       : JSON.stringify(result.error);
     throw new Error(`Late API error: ${errMsg}`);
   }
-  return result.data as T;
+  const data = result.data as T;
+  // Late SDK wraps list responses in { posts: [...] }, { accounts: [...] }, etc.
+  // Auto-extract the nested array if the response is a single-key object with an array value.
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const keys = Object.keys(data as Record<string, unknown>);
+    if (keys.length === 1) {
+      const val = (data as Record<string, unknown>)[keys[0]];
+      if (Array.isArray(val)) return val as T;
+    }
+  }
+  return data;
 }
 
 let clientInstance: LateClient | null = null;

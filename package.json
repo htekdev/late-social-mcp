@@ -1,6 +1,6 @@
 {
   "name": "late-social-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Comprehensive social media manager MCP server via Late API — smart scheduling, realignment, analytics, and engagement tools",
   "type": "module",
   "main": "bin/mcp-server.cjs",
