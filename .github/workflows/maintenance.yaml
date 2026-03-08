@@ -1,0 +1,83 @@
+name: Maintenance
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  dependency-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Check for outdated packages
+        id: outdated
+        run: |
+          OUTDATED=$(npm outdated --json 2>/dev/null || true)
+          if [ "$OUTDATED" = "{}" ] || [ -z "$OUTDATED" ]; then
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "$OUTDATED" > outdated.json
+          fi
+      - name: Update packages
+        if: steps.outdated.outputs.has_updates == 'true'
+        run: npx npm-check-updates -u && npm install
+      - name: Run tests
+        if: steps.outdated.outputs.has_updates == 'true'
+        run: npm test
+      - name: Create PR
+        if: steps.outdated.outputs.has_updates == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies'
+          title: 'chore: automated dependency updates'
+          body: |
+            Automated dependency update from maintenance workflow.
+            
+            Updated packages:
+            ```json
+            $(cat outdated.json)
+            ```
+          branch: chore/dependency-updates
+          delete-branch: true
+
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: Run tests with coverage
+        run: npx vitest run --coverage --reporter=json-summary 2>&1 || true
+      - name: Check for deprecation warnings
+        id: deprecations
+        run: |
+          npm ls 2>&1 | grep -i "deprecated\|WARN" > deprecations.txt || true
+          if [ -s deprecations.txt ]; then
+            echo "has_deprecations=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_deprecations=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create issue for deprecations
+        if: steps.deprecations.outputs.has_deprecations == 'true'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: 'maintenance: deprecation warnings detected'
+          content-filepath: deprecations.txt
+          labels: maintenance,dependencies

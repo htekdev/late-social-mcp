@@ -4,6 +4,7 @@ export interface ToolResponseContent {
 }
 
 export interface ToolResponse {
+  [key: string]: unknown;
   content: ToolResponseContent[];
   isError?: boolean;
 }
