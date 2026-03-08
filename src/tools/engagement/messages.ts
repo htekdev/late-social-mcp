@@ -1,5 +1,5 @@
 import { server } from '../../mcpServer.js';
-import { getClient, unwrap, toApiPlatform } from '../../client/lateClient.js';
+import { getClient, toApiPlatform } from '../../client/lateClient.js';
 import { textResponse, errorResponse } from '../../types/tools.js';
 import { z } from 'zod';
 
@@ -16,23 +16,17 @@ server.tool(
   },
   async ({ profileId, platform, limit, page }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.messages.listInboxConversations({
-          query: {
-            profileId,
-            platform: platform ? toApiPlatform(platform) : undefined,
-            limit,
-            page,
-          },
-        }),
-      );
+      const client = getClient();
+      const items = await client.listConversations({
+        profileId,
+        platform: platform ? toApiPlatform(platform) : undefined,
+        limit,
+        page,
+      });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (!items || items.length === 0) {
         return textResponse('No conversations found.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['💬 Inbox Conversations', '═'.repeat(60)];
 
       for (const item of items) {
@@ -66,13 +60,8 @@ server.tool(
   },
   async ({ conversationId, accountId }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.messages.getInboxConversation({
-          path: { conversationId },
-          query: { accountId },
-        }),
-      );
+      const client = getClient();
+      const data = await client.getConversation(conversationId, accountId);
 
       if (!data) {
         return textResponse(`No conversation found with ID ${conversationId}.`);
@@ -110,19 +99,12 @@ server.tool(
   },
   async ({ conversationId, accountId, limit, page }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.messages.getInboxConversationMessages({
-          path: { conversationId },
-          query: { accountId, limit, page },
-        }),
-      );
+      const client = getClient();
+      const items = await client.listMessages(conversationId, accountId, { limit, page });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (!items || items.length === 0) {
         return textResponse(`No messages found in conversation ${conversationId}.`);
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = [
         `📨 Messages — Conversation ${conversationId}`,
         '═'.repeat(60),
@@ -163,15 +145,8 @@ server.tool(
   },
   async ({ conversationId, accountId, message }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.messages.sendInboxMessage({
-          path: { conversationId },
-          body: { accountId, message },
-        }),
-      );
-
-      const result = data as Record<string, unknown> | undefined;
+      const client = getClient();
+      const result = await client.sendMessage(conversationId, accountId, message) as Record<string, unknown> | undefined;
       const lines: string[] = [
         '✅ Message Sent',
         '═'.repeat(40),
@@ -202,13 +177,8 @@ server.tool(
   },
   async ({ conversationId, messageId, message }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(
-        await late.messages.editInboxMessage({
-          path: { conversationId, messageId },
-          body: { message },
-        }),
-      );
+      const client = getClient();
+      await client.editMessage(conversationId, messageId, message);
 
       const lines: string[] = [
         '✏️  Message Edited',

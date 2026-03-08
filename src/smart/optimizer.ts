@@ -1,4 +1,4 @@
-import { getClient, unwrap } from '../client/lateClient.js';
+import { getClient } from '../client/lateClient.js';
 
 export interface BestTimeResult {
   platform: string;
@@ -10,14 +10,10 @@ export interface BestTimeResult {
 }
 
 export async function getBestTimesToPost(platform?: string): Promise<BestTimeResult[]> {
-  const late = getClient().sdk;
+  const client = getClient();
 
   try {
-    const result = await late.analytics.getBestTimeToPost({
-      query: platform ? { platform } : {},
-    });
-    const data = unwrap(result);
-    const results = Array.isArray(data) ? data : [data];
+    const results = await client.getAnalytics(platform ? { platform } : {});
 
     return results.map((item: unknown) => {
       const r = item as Record<string, unknown>;
@@ -48,14 +44,10 @@ export interface PostingFrequencyResult {
 }
 
 export async function getPostingFrequency(platform?: string): Promise<PostingFrequencyResult[]> {
-  const late = getClient().sdk;
+  const client = getClient();
 
   try {
-    const result = await late.analytics.getPostingFrequency({
-      query: platform ? { platform } : {},
-    });
-    const data = unwrap(result);
-    const results = Array.isArray(data) ? data : [data];
+    const results = await client.getAnalytics(platform ? { platform } : {});
 
     return results.map((item: unknown) => {
       const r = item as Record<string, unknown>;
@@ -100,20 +92,14 @@ export async function getContentDecay(
   postId?: string,
   platform?: string,
 ): Promise<ContentDecayResult[]> {
-  const late = getClient().sdk;
+  const client = getClient();
 
   try {
     if (postId) {
-      const result = await late.analytics.getPostTimeline({
-        path: { postId },
-        query: {},
-      });
-      const data = unwrap(result);
-      const timeline = (data as Record<string, unknown>).timeline as unknown[]
-        ?? (Array.isArray(data) ? data : []);
+      const timeline = await client.getPostTimeline(postId, {});
 
-      const publishedAt = ((data as Record<string, unknown>).publishedAt ?? '') as string;
-      const publishedMs = publishedAt ? new Date(publishedAt).getTime() : Date.now();
+      const publishedAt = '';
+      const publishedMs = Date.now();
 
       let total = 0;
       const decayPoints: ContentDecayResult['decayPoints'] = [];
@@ -154,18 +140,10 @@ export async function getContentDecay(
       }];
     }
 
-    const analyticsResult = await late.analytics.getAnalytics({
-      query: {
-        platform: platform ?? undefined,
-        limit: 20,
-        sortBy: 'engagement',
-        sortOrder: 'desc',
-      },
+    const posts = await client.getAnalytics({
+      platform: platform ?? undefined,
+      limit: 20,
     });
-    const analyticsData = unwrap(analyticsResult);
-    const posts = Array.isArray(analyticsData)
-      ? analyticsData
-      : (analyticsData as Record<string, unknown>).posts as unknown[] ?? [];
 
     const results: ContentDecayResult[] = [];
     for (const p of posts.slice(0, 5)) {

@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap } from '../client/lateClient.js';
+import { getClient } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -13,14 +13,7 @@ server.tool(
   },
   async ({ profileId }) => {
     try {
-      const result = unwrap(
-        await getClient().sdk.queue.listQueueSlots({
-          query: { profileId, all: true },
-        }),
-      );
-      const queues: Array<Record<string, unknown>> = Array.isArray(result)
-        ? result
-        : ((result as Record<string, unknown>)?.data as typeof queues) ?? [];
+      const queues = await getClient().listQueues(profileId);
 
       if (queues.length === 0) {
         return textResponse('No queue schedules found for this profile.');
@@ -78,17 +71,13 @@ server.tool(
       if (daysList.length === 0) return errorResponse('At least one day is required.');
       if (timesList.length === 0) return errorResponse('At least one time is required.');
 
-      unwrap(
-        await getClient().sdk.queue.createQueueSlot({
-          body: {
-            profileId,
-            name,
-            days: daysList,
-            times: timesList,
-            setAsDefault,
-          },
-        }),
-      );
+      await getClient().createQueue({
+        profileId,
+        name,
+        days: daysList,
+        times: timesList,
+        setAsDefault,
+      });
 
       const lines = [
         '✅ Queue created successfully.',
@@ -149,11 +138,7 @@ server.tool(
         body.times = timesList;
       }
 
-      unwrap(
-        await getClient().sdk.queue.updateQueueSlot({
-          body: body as never,
-        }),
-      );
+      await getClient().updateQueue(body as never);
 
       const updates: string[] = [];
       if (name) updates.push(`Name: ${name}`);
@@ -181,11 +166,7 @@ server.tool(
   },
   async ({ profileId, queueId }) => {
     try {
-      unwrap(
-        await getClient().sdk.queue.deleteQueueSlot({
-          query: { profileId, queueId },
-        }),
-      );
+      await getClient().deleteQueue(profileId, queueId);
       return textResponse(`✅ Queue ${queueId} deleted successfully.`);
     } catch (err: unknown) {
       return errorResponse(err instanceof Error ? err.message : 'Failed to delete queue');
@@ -210,17 +191,10 @@ server.tool(
     try {
       const slotCount = count ?? 10;
 
-      const query: Record<string, unknown> = { profileId, count: slotCount };
-      if (queueId) query.queueId = queueId;
+      const opts: { count?: number; queueId?: string } = { count: slotCount };
+      if (queueId) opts.queueId = queueId;
 
-      const result = unwrap(
-        await getClient().sdk.queue.previewQueue({
-          query: query as never,
-        }),
-      );
-      const slots: Array<Record<string, unknown>> = Array.isArray(result)
-        ? result
-        : ((result as Record<string, unknown>)?.data as typeof slots) ?? [];
+      const slots = await getClient().previewQueueSlots(profileId, opts);
 
       if (slots.length === 0) {
         return textResponse('No upcoming queue slots found.');

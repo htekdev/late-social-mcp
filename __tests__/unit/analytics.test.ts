@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
+  toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
+mockClient = createMockClient();
+
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 await import('../../src/tools/analytics.js');
 
@@ -31,23 +34,6 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    analytics: {
-      getAnalytics: vi.fn().mockResolvedValue({ data: [] }),
-      getDailyMetrics: vi.fn().mockResolvedValue({ data: [] }),
-      getPostTimeline: vi.fn().mockResolvedValue({ data: [] }),
-      getYouTubeDailyViews: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    accounts: {
-      getFollowerStats: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 describe('analytics tools registration', () => {
   it('registers all five analytics tools', () => {
     const names = vi.mocked(server.tool).mock.calls.map((c) => c[0]);
@@ -60,14 +46,12 @@ describe('analytics tools registration', () => {
 });
 
 describe('get_post_analytics', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted analytics data', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{ postId: 'p1', platform: 'instagram', impressions: 5000, reach: 3000, likes: 200, comments: 15, shares: 30 }],
-    });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getAnalytics.mockResolvedValue([
       { postId: 'p1', platform: 'instagram', impressions: 5000, reach: 3000, likes: 200, comments: 15, shares: 30 },
     ]);
 
@@ -82,8 +66,7 @@ describe('get_post_analytics', () => {
   });
 
   it('returns empty message when no data', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getAnalytics.mockResolvedValue([]);
 
     const handler = getToolHandler('get_post_analytics');
     const result = await handler({});
@@ -91,9 +74,8 @@ describe('get_post_analytics', () => {
     expect(result.content[0].text).toContain('No analytics data found');
   });
 
-  it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('API rate limit'); });
+  it('returns error on API failure', async () => {
+    mockClient.getAnalytics.mockRejectedValue(new Error('API rate limit'));
 
     const handler = getToolHandler('get_post_analytics');
     const result = await handler({});
@@ -104,12 +86,12 @@ describe('get_post_analytics', () => {
 });
 
 describe('get_daily_metrics', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted daily metrics table', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getDailyMetrics.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getDailyMetrics.mockResolvedValue([
       { date: '2024-06-01', impressions: 1200, reach: 800, likes: 50, comments: 10, shares: 5 },
       { date: '2024-06-02', impressions: 1500, reach: 900, likes: 60, comments: 12, shares: 8 },
     ]);
@@ -125,24 +107,22 @@ describe('get_daily_metrics', () => {
   });
 
   it('handles comma-separated platforms', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getDailyMetrics.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getDailyMetrics.mockResolvedValue([]);
 
     const handler = getToolHandler('get_daily_metrics');
     await handler({ platforms: 'instagram,x' });
 
-    expect(sdk.analytics.getDailyMetrics).toHaveBeenCalled();
+    expect(mockClient.getDailyMetrics).toHaveBeenCalled();
   });
 });
 
 describe('get_follower_stats', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted follower stats', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getFollowerStats.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getFollowerStats.mockResolvedValue([
       { accountId: 'a1', platform: 'instagram', followers: 10000, gained: 50, lost: 10, netChange: 40 },
     ]);
 
@@ -158,12 +138,12 @@ describe('get_follower_stats', () => {
 });
 
 describe('get_post_timeline', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted timeline data', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getPostTimeline.mockResolvedValue([
       { date: '2024-06-01T10:00', impressions: 100, likes: 5, comments: 2, shares: 1 },
       { date: '2024-06-01T12:00', impressions: 300, likes: 15, comments: 5, shares: 3 },
     ]);
@@ -178,8 +158,7 @@ describe('get_post_timeline', () => {
   });
 
   it('handles empty timeline', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getPostTimeline.mockResolvedValue([]);
 
     const handler = getToolHandler('get_post_timeline');
     const result = await handler({ postId: 'p1' });
@@ -189,12 +168,12 @@ describe('get_post_timeline', () => {
 });
 
 describe('get_youtube_daily_views', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted YouTube views with totals', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getYouTubeDailyViews.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getYouTubeDailyViews.mockResolvedValue([
       { date: '2024-06-01', views: 500 },
       { date: '2024-06-02', views: 750 },
     ]);
@@ -210,8 +189,7 @@ describe('get_youtube_daily_views', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Not found'); });
+    mockClient.getYouTubeDailyViews.mockRejectedValue(new Error('Not found'));
 
     const handler = getToolHandler('get_youtube_daily_views');
     const result = await handler({ videoId: 'bad' });

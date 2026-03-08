@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { server } from '../mcpServer.js';
-import { getClient, unwrap, toApiPlatform } from '../client/lateClient.js';
+import { getClient, toApiPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
+import type { CreatePostBody, UpdatePostBody } from '../types/api.js';
 
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
@@ -22,7 +23,9 @@ function formatPostSummary(post: Record<string, unknown>, index?: number): strin
   const id = String(post.id ?? 'unknown');
   const status = String(post.status ?? 'unknown');
   const content = truncate(String(post.content ?? ''), 120);
-  const platforms = Array.isArray(post.platforms) ? post.platforms.join(', ') : 'none';
+  const platforms = Array.isArray(post.platforms)
+    ? post.platforms.map((p: unknown) => typeof p === 'string' ? p : (p as Record<string, unknown>).platform).join(', ')
+    : 'none';
   const scheduled = formatDate(post.scheduledFor as string | null);
 
   return [
@@ -41,7 +44,7 @@ function formatPostDetail(post: Record<string, unknown>): string {
     '',
     `ID: ${post.id}`,
     `Status: ${post.status}`,
-    `Platforms: ${Array.isArray(post.platforms) ? post.platforms.join(', ') : 'none'}`,
+    `Platforms: ${Array.isArray(post.platforms) ? post.platforms.map((p: unknown) => typeof p === 'string' ? p : (p as Record<string, unknown>).platform).join(', ') : 'none'}`,
     `Scheduled: ${formatDate(post.scheduledFor as string | null)}`,
     `Created: ${formatDate(post.createdAt as string | null)}`,
     `Updated: ${formatDate(post.updatedAt as string | null)}`,
@@ -77,7 +80,7 @@ server.tool(
   },
   async ({ status, platform, search, limit, page }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
 
       const query: Record<string, unknown> = {};
       if (status) query.status = status;
@@ -86,9 +89,7 @@ server.tool(
       if (limit) query.limit = limit;
       if (page) query.page = page;
 
-      const posts = unwrap(await late.posts.listPosts({ query }));
-
-      const postList = Array.isArray(posts) ? posts : [];
+      const postList = await client.listPosts(query);
 
       if (postList.length === 0) {
         const filters: string[] = [];
@@ -106,7 +107,7 @@ server.tool(
       ];
 
       for (let i = 0; i < postList.length; i++) {
-        lines.push(formatPostSummary(postList[i] as Record<string, unknown>, i));
+        lines.push(formatPostSummary(postList[i] as unknown as Record<string, unknown>, i));
         if (i < postList.length - 1) lines.push('');
       }
 
@@ -125,9 +126,9 @@ server.tool(
   },
   async ({ postId }) => {
     try {
-      const late = getClient().sdk;
-      const post = unwrap(await late.posts.getPost({ path: { postId } }));
-      return textResponse(formatPostDetail(post as Record<string, unknown>));
+      const client = getClient();
+      const post = await client.getPost(postId);
+      return textResponse(formatPostDetail(post as unknown as Record<string, unknown>));
     } catch (err: unknown) {
       return errorResponse(`Failed to get post: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -147,7 +148,7 @@ server.tool(
   },
   async ({ content, platforms, scheduledFor, publishNow, isDraft, mediaUrls }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
 
       const platformList = platforms
         .split(',')
@@ -158,7 +159,7 @@ server.tool(
         return errorResponse('At least one platform is required. Example: twitter, instagram');
       }
 
-      const body: Record<string, unknown> = {
+      const body: CreatePostBody = {
         content,
         platforms: platformList,
       };
@@ -172,15 +173,14 @@ server.tool(
           .filter((u) => u.length > 0);
       }
 
-      const post = unwrap(await late.posts.createPost({ body }));
-      const created = post as Record<string, unknown>;
+      const created = await client.createPost(body);
 
       const action = publishNow ? 'published' : isDraft ? 'saved as draft' : 'scheduled';
 
       const lines: string[] = [
         `✅ Post ${action} successfully!`,
         '',
-        `ID: ${created.id}`,
+        `ID: ${created._id}`,
         `Status: ${created.status}`,
         `Platforms: ${platformList.join(', ')}`,
       ];
@@ -208,18 +208,17 @@ server.tool(
   },
   async ({ postId, content, scheduledFor }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
 
-      const body: Record<string, unknown> = {};
+      const body: UpdatePostBody = {};
       if (content !== undefined) body.content = content;
       if (scheduledFor !== undefined) body.scheduledFor = scheduledFor;
 
-      if (Object.keys(body).length === 0) {
+      if (!body.content && !body.scheduledFor) {
         return errorResponse('Nothing to update. Provide at least content or scheduledFor.');
       }
 
-      const post = unwrap(await late.posts.updatePost({ path: { postId }, body }));
-      const updated = post as Record<string, unknown>;
+      const updated = await client.updatePost(postId, body);
 
       const changes: string[] = [];
       if (content !== undefined) changes.push('content');
@@ -228,7 +227,7 @@ server.tool(
       const lines: string[] = [
         `✅ Post updated successfully!`,
         '',
-        `ID: ${updated.id}`,
+        `ID: ${updated._id}`,
         `Updated: ${changes.join(', ')}`,
         `Status: ${updated.status}`,
       ];
@@ -256,8 +255,8 @@ server.tool(
   },
   async ({ postId }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(await late.posts.deletePost({ path: { postId } }));
+      const client = getClient();
+      await client.deletePost(postId);
       return textResponse(`✅ Post ${postId} deleted successfully.`);
     } catch (err: unknown) {
       return errorResponse(`Failed to delete post: ${err instanceof Error ? err.message : String(err)}`);
@@ -273,17 +272,16 @@ server.tool(
   },
   async ({ postId }) => {
     try {
-      const late = getClient().sdk;
-      const post = unwrap(await late.posts.retryPost({ path: { postId } }));
-      const retried = post as Record<string, unknown>;
+      const client = getClient();
+      const retried = await client.retryPost(postId);
 
       return textResponse(
         [
           `🔄 Post retry initiated!`,
           '',
-          `ID: ${retried.id}`,
+          `ID: ${retried._id}`,
           `Status: ${retried.status}`,
-          `Platforms: ${Array.isArray(retried.platforms) ? retried.platforms.join(', ') : 'unknown'}`,
+          `Platforms: ${Array.isArray(retried.platforms) ? retried.platforms.map((p) => typeof p === 'string' ? p : p.platform).join(', ') : 'unknown'}`,
         ].join('\n'),
       );
     } catch (err: unknown) {
@@ -301,7 +299,7 @@ server.tool(
   },
   async ({ postId, platforms }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
 
       const platformList = platforms
         .split(',')
@@ -312,12 +310,7 @@ server.tool(
         return errorResponse('At least one platform is required.');
       }
 
-      unwrap(
-        await late.posts.unpublishPost({
-          path: { postId },
-          body: { platforms: platformList },
-        }),
-      );
+      await client.unpublishPost(postId, platformList);
 
       return textResponse(
         [
@@ -419,21 +412,20 @@ server.tool(
         return textResponse(output.join('\n'));
       }
 
-      const late = getClient().sdk;
+      const client = getClient();
       const results: Array<{ index: number; id?: string; error?: string }> = [];
 
       for (let i = 0; i < parsedRows.length; i++) {
         const row = parsedRows[i];
         try {
-          const body: Record<string, unknown> = {
+          const body: CreatePostBody = {
             content: row.content,
             platforms: row.platforms,
           };
           if (row.scheduledFor) body.scheduledFor = row.scheduledFor;
 
-          const post = unwrap(await late.posts.createPost({ body }));
-          const created = post as Record<string, unknown>;
-          results.push({ index: i, id: String(created.id) });
+          const created = await client.createPost(body);
+          results.push({ index: i, id: String(created._id) });
         } catch (err: unknown) {
           results.push({
             index: i,

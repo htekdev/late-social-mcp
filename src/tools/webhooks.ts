@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap } from '../client/lateClient.js';
+import { getClient } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -9,15 +9,14 @@ server.tool(
   {},
   async () => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(await late.webhooks.getWebhookSettings());
-      const webhooks = Array.isArray(data) ? data : [];
+      const client = getClient();
+      const webhooks = await client.listWebhooks();
 
       if (webhooks.length === 0) {
         return textResponse('No webhooks configured.');
       }
 
-      const lines = webhooks.map((w: Record<string, unknown>, i: number) => {
+      const lines = webhooks.map((w, i) => {
         const active = w.isActive ? '✅ Active' : '❌ Inactive';
         const events = Array.isArray(w.events) ? w.events.join(', ') : String(w.events ?? 'N/A');
         return [
@@ -45,13 +44,10 @@ server.tool(
   },
   async ({ url, events, name }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const eventList = events.split(',').map((e) => e.trim()).filter(Boolean);
-      const body: Record<string, unknown> = { url, events: eventList };
-      if (name) body.name = name;
 
-      const data = unwrap(await late.webhooks.createWebhookSettings({ body }));
-      const webhook = data as Record<string, unknown>;
+      const webhook = await client.createWebhook(url, eventList, name);
 
       const lines = [
         '✅ Webhook created successfully!',
@@ -80,17 +76,16 @@ server.tool(
   },
   async ({ webhookId, url, events, name, isActive }) => {
     try {
-      const late = getClient().sdk;
-      const body: Record<string, unknown> = { _id: webhookId };
-      if (url !== undefined) body.url = url;
-      if (name !== undefined) body.name = name;
-      if (isActive !== undefined) body.isActive = isActive;
+      const client = getClient();
+      const opts: Record<string, unknown> = {};
+      if (url !== undefined) opts.url = url;
+      if (name !== undefined) opts.name = name;
+      if (isActive !== undefined) opts.isActive = isActive;
       if (events !== undefined) {
-        body.events = events.split(',').map((e) => e.trim()).filter(Boolean);
+        opts.events = events.split(',').map((e) => e.trim()).filter(Boolean);
       }
 
-      const data = unwrap(await late.webhooks.updateWebhookSettings({ body }));
-      const webhook = data as Record<string, unknown>;
+      const webhook = await client.updateWebhook(webhookId, opts);
 
       const lines = [
         '✅ Webhook updated successfully!',
@@ -118,9 +113,8 @@ server.tool(
   { webhookId: z.string() },
   async ({ webhookId }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(await late.webhooks.testWebhook({ body: { webhookId } }));
-      const result = data as Record<string, unknown>;
+      const client = getClient();
+      const result = await client.testWebhook(webhookId);
 
       const success = result.success !== false;
       const lines = [

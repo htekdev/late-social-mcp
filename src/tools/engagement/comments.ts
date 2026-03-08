@@ -1,5 +1,5 @@
 import { server } from '../../mcpServer.js';
-import { getClient, unwrap, toApiPlatform } from '../../client/lateClient.js';
+import { getClient, toApiPlatform } from '../../client/lateClient.js';
 import { textResponse, errorResponse } from '../../types/tools.js';
 import { z } from 'zod';
 
@@ -15,22 +15,16 @@ server.tool(
   },
   async ({ profileId, platform, limit }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.comments.listInboxComments({
-          query: {
-            profileId,
-            platform: platform ? toApiPlatform(platform) : undefined,
-            limit,
-          },
-        }),
-      );
+      const client = getClient();
+      const items = await client.listCommentedPosts({
+        profileId,
+        platform: platform ? toApiPlatform(platform) : undefined,
+        limit,
+      });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (!items || items.length === 0) {
         return textResponse('No commented posts found.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['💬 Commented Posts', '═'.repeat(60)];
 
       for (const item of items) {
@@ -65,19 +59,12 @@ server.tool(
   },
   async ({ postId, accountId, limit }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.comments.getInboxPostComments({
-          path: { postId },
-          query: { accountId, limit },
-        }),
-      );
+      const client = getClient();
+      const items = await client.getPostComments(postId, { accountId, limit });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (!items || items.length === 0) {
         return textResponse(`No comments found for post ${postId}.`);
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = [
         `💬 Comments on Post ${postId}`,
         '═'.repeat(60),
@@ -120,15 +107,8 @@ server.tool(
   },
   async ({ postId, accountId, commentId, message }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.comments.replyToInboxPost({
-          path: { postId },
-          body: { accountId, commentId, message },
-        }),
-      );
-
-      const result = data as Record<string, unknown> | undefined;
+      const client = getClient();
+      const result = await client.replyToComment(postId, accountId, commentId, message) as Record<string, unknown> | undefined;
       const lines: string[] = [
         '✅ Reply Sent',
         '═'.repeat(45),
@@ -158,13 +138,8 @@ server.tool(
   },
   async ({ commentId, accountId }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(
-        await late.comments.deleteInboxComment({
-          path: { commentId },
-          body: { accountId },
-        }),
-      );
+      const client = getClient();
+      await client.deleteComment(commentId, accountId);
 
       return textResponse(
         [
@@ -191,13 +166,8 @@ server.tool(
   },
   async ({ commentId, accountId }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(
-        await late.comments.hideInboxComment({
-          path: { commentId },
-          body: { accountId },
-        }),
-      );
+      const client = getClient();
+      await client.hideComment(commentId, accountId);
 
       return textResponse(
         [
@@ -224,13 +194,8 @@ server.tool(
   },
   async ({ commentId, accountId }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(
-        await late.comments.likeInboxComment({
-          path: { commentId },
-          body: { accountId },
-        }),
-      );
+      const client = getClient();
+      await client.likeComment(commentId, accountId);
 
       return textResponse(
         [
@@ -258,15 +223,8 @@ server.tool(
   },
   async ({ commentId, accountId, message }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.comments.sendPrivateReplyToComment({
-          path: { commentId },
-          body: { accountId, message },
-        }),
-      );
-
-      const result = data as Record<string, unknown> | undefined;
+      const client = getClient();
+      const result = await client.sendPrivateReply(commentId, accountId, message) as Record<string, unknown> | undefined;
       const lines: string[] = [
         '🔒 Private Reply Sent',
         '═'.repeat(45),

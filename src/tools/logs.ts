@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap, toDisplayPlatform } from '../client/lateClient.js';
+import { getClient, toDisplayPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -9,9 +9,8 @@ server.tool(
   { postId: z.string() },
   async ({ postId }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(await late.logs.getPostLogs({ path: { postId } }));
-      const logs = Array.isArray(data) ? data : [];
+      const client = getClient();
+      const logs = await client.getPostLogs(postId);
 
       if (logs.length === 0) {
         return textResponse(`No logs found for post ${postId}.`);
@@ -50,16 +49,14 @@ server.tool(
   },
   async ({ status, platform, action, limit }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const query: Record<string, unknown> = {};
       if (status) query.status = status;
       if (platform) query.platform = platform;
       if (action) query.action = action;
       if (limit) query.limit = limit;
 
-      const data = unwrap(await late.logs.listPostsLogs({ query }));
-      const result = data as Record<string, unknown>;
-      const logs = Array.isArray(result) ? result : Array.isArray(result.logs) ? result.logs : [];
+      const logs = await client.listPublishingLogs(query);
 
       if (logs.length === 0) {
         return textResponse('No publishing logs found matching the filters.');
@@ -94,10 +91,6 @@ server.tool(
         if (entry.error) lines.push(`   Error: ${entry.error}`);
       }
 
-      if (typeof result === 'object' && !Array.isArray(result) && result.totalCount) {
-        lines.push('', `Total: ${result.totalCount}`);
-      }
-
       return textResponse(lines.join('\n'));
     } catch (err: unknown) {
       return errorResponse(`Failed to list publishing logs: ${err instanceof Error ? err.message : String(err)}`);
@@ -115,15 +108,13 @@ server.tool(
   },
   async ({ platform, status, limit }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const query: Record<string, unknown> = {};
       if (platform) query.platform = platform;
       if (status) query.status = status;
       if (limit) query.limit = limit;
 
-      const data = unwrap(await late.logs.listConnectionLogs({ query }));
-      const result = data as Record<string, unknown>;
-      const logs = Array.isArray(result) ? result : Array.isArray(result.logs) ? result.logs : [];
+      const logs = await client.listConnectionLogs(query);
 
       if (logs.length === 0) {
         return textResponse('No connection logs found matching the filters.');
@@ -153,10 +144,6 @@ server.tool(
         if (entry.message) lines.push(`   ${entry.message}`);
         if (entry.error) lines.push(`   Error: ${entry.error}`);
         if (entry.accountId) lines.push(`   Account: ${entry.accountId}`);
-      }
-
-      if (typeof result === 'object' && !Array.isArray(result) && result.totalCount) {
-        lines.push('', `Total: ${result.totalCount}`);
       }
 
       return textResponse(lines.join('\n'));

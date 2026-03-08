@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 vi.mock('../../src/config/scheduleConfig.js', () => ({
@@ -57,7 +58,6 @@ vi.mock('../../src/config/scheduleConfig.js', () => ({
 }));
 
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 import { loadScheduleConfig } from '../../src/config/scheduleConfig.js';
 
 await import('../../src/tools/scheduling.js');
@@ -78,17 +78,9 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    posts: {
-      listPosts: vi.fn().mockResolvedValue({ data: [] }),
-      updatePost: vi.fn().mockResolvedValue({ data: { id: 'p1' } }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
+beforeEach(() => {
+  mockClient = createMockClient();
+});
 
 // ── Registration ──
 
@@ -108,9 +100,7 @@ describe('schedule_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('schedules a post with a valid ISO datetime', async () => {
-    const sdk = mockSdk();
-    sdk.posts.updatePost.mockResolvedValue({ data: { id: 'p1' } });
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1' });
+    mockClient.updatePost.mockResolvedValue({ _id: 'p1' });
 
     const handler = getToolHandler('schedule_post');
     const result = await handler({ postId: 'p1', scheduledFor: '2025-06-15T09:00:00Z' });
@@ -121,25 +111,19 @@ describe('schedule_post', () => {
     expect(result.content[0].text).toContain('✅');
   });
 
-  it('calls updatePost with correct path and body', async () => {
-    const sdk = mockSdk();
-    sdk.posts.updatePost.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
+  it('calls updatePost with correct postId and body', async () => {
+    mockClient.updatePost.mockResolvedValue({});
 
     const handler = getToolHandler('schedule_post');
     await handler({ postId: 'abc123', scheduledFor: '2025-07-01T14:00:00Z' });
 
-    expect(sdk.posts.updatePost).toHaveBeenCalledWith({
-      path: { postId: 'abc123' },
-      body: { scheduledFor: '2025-07-01T14:00:00Z' },
+    expect(mockClient.updatePost).toHaveBeenCalledWith('abc123', {
+      scheduledFor: '2025-07-01T14:00:00Z',
     });
   });
 
-  it('returns error when SDK throws', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Post not found');
-    });
+  it('returns error when client throws', async () => {
+    mockClient.updatePost.mockRejectedValue(new Error('Post not found'));
 
     const handler = getToolHandler('schedule_post');
     const result = await handler({ postId: 'bad-id', scheduledFor: '2025-06-15T09:00:00Z' });
@@ -149,10 +133,7 @@ describe('schedule_post', () => {
   });
 
   it('handles non-Error exceptions gracefully', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw 'unexpected string error';
-    });
+    mockClient.updatePost.mockRejectedValue('unexpected string error');
 
     const handler = getToolHandler('schedule_post');
     const result = await handler({ postId: 'p1', scheduledFor: '2025-06-15T09:00:00Z' });
@@ -168,10 +149,6 @@ describe('find_next_slot', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('finds the next available slot for a platform', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
 
@@ -199,7 +176,6 @@ describe('find_next_slot', () => {
   });
 
   it('skips booked slots and finds the next open one', async () => {
-    const sdk = mockSdk();
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -208,8 +184,7 @@ describe('find_next_slot', () => {
       scheduledFor: tomorrow.toISOString(),
       content: 'Already booked post',
     };
-    sdk.posts.listPosts.mockResolvedValue({ data: [scheduledPost] });
-    vi.mocked(unwrap).mockReturnValue([scheduledPost]);
+    mockClient.listPosts.mockResolvedValue([scheduledPost]);
 
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
@@ -219,7 +194,6 @@ describe('find_next_slot', () => {
   });
 
   it('shows nearby posts scheduled on the same day', async () => {
-    const sdk = mockSdk();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 2);
     futureDate.setHours(14, 0, 0, 0);
@@ -228,8 +202,7 @@ describe('find_next_slot', () => {
       scheduledFor: futureDate.toISOString(),
       content: 'A post on the same day',
     };
-    sdk.posts.listPosts.mockResolvedValue({ data: [nearbyPost] });
-    vi.mocked(unwrap).mockReturnValue([nearbyPost]);
+    mockClient.listPosts.mockResolvedValue([nearbyPost]);
 
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
@@ -239,9 +212,6 @@ describe('find_next_slot', () => {
   });
 
   it('returns ISO datetime in the response', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
 
@@ -249,9 +219,8 @@ describe('find_next_slot', () => {
     expect(result.content[0].text).toContain('ISO:');
   });
 
-  it('handles SDK error when fetching posts', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockRejectedValue(new Error('Network timeout'));
+  it('handles API error when fetching posts', async () => {
+    mockClient.listPosts.mockRejectedValue(new Error('Network timeout'));
 
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
@@ -267,7 +236,6 @@ describe('view_calendar', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('shows scheduled posts grouped by date', async () => {
-    const sdk = mockSdk();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 1);
     futureDate.setHours(10, 0, 0, 0);
@@ -279,8 +247,7 @@ describe('view_calendar', () => {
         platforms: ['twitter'],
       },
     ];
-    sdk.posts.listPosts.mockResolvedValue({ data: posts });
-    vi.mocked(unwrap).mockReturnValue(posts);
+    mockClient.listPosts.mockResolvedValue(posts);
 
     const handler = getToolHandler('view_calendar');
     const result = await handler({});
@@ -291,9 +258,6 @@ describe('view_calendar', () => {
   });
 
   it('shows empty message when no posts are scheduled', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('view_calendar');
     const result = await handler({});
 
@@ -302,10 +266,6 @@ describe('view_calendar', () => {
   });
 
   it('respects the days parameter for look-ahead', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('view_calendar');
     const result = await handler({ days: 14 });
 
@@ -314,7 +274,6 @@ describe('view_calendar', () => {
   });
 
   it('filters out posts beyond the look-ahead window', async () => {
-    const sdk = mockSdk();
     const farFuture = new Date();
     farFuture.setDate(farFuture.getDate() + 30);
 
@@ -325,8 +284,7 @@ describe('view_calendar', () => {
         platforms: ['instagram'],
       },
     ];
-    sdk.posts.listPosts.mockResolvedValue({ data: posts });
-    vi.mocked(unwrap).mockReturnValue(posts);
+    mockClient.listPosts.mockResolvedValue(posts);
 
     const handler = getToolHandler('view_calendar');
     const result = await handler({ days: 7 });
@@ -334,9 +292,8 @@ describe('view_calendar', () => {
     expect(result.content[0].text).toContain('No scheduled posts');
   });
 
-  it('returns error on SDK failure', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockRejectedValue(new Error('Auth expired'));
+  it('returns error on API failure', async () => {
+    mockClient.listPosts.mockRejectedValue(new Error('Auth expired'));
 
     const handler = getToolHandler('view_calendar');
     const result = await handler({});

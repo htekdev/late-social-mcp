@@ -1,26 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
+  toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
+mockClient = createMockClient();
+
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 await import('../../src/tools/engagement/messages.js');
 
 type ToolHandler = (params: Record<string, unknown>) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>;
 
-// Capture handlers at import time before clearAllMocks can wipe them
+// Capture handlers at import time before createMockClient resets them
 const toolHandlers = new Map<string, ToolHandler>();
 for (const call of vi.mocked(server.tool).mock.calls) {
   toolHandlers.set(call[0] as string, call[call.length - 1] as ToolHandler);
@@ -30,21 +33,6 @@ function getToolHandler(toolName: string): ToolHandler {
   const handler = toolHandlers.get(toolName);
   if (!handler) throw new Error(`Tool "${toolName}" not registered`);
   return handler;
-}
-
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    messages: {
-      listInboxConversations: vi.fn().mockResolvedValue({ data: [] }),
-      getInboxConversation: vi.fn().mockResolvedValue({ data: null }),
-      getInboxConversationMessages: vi.fn().mockResolvedValue({ data: [] }),
-      sendInboxMessage: vi.fn().mockResolvedValue({ data: {} }),
-      editInboxMessage: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
 }
 
 describe('messages tools registration', () => {
@@ -59,11 +47,12 @@ describe('messages tools registration', () => {
 });
 
 describe('list_conversations', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted conversation list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listConversations.mockResolvedValue([
       { id: 'c1', platform: 'instagram', participantName: 'Alice', lastMessage: 'Hey there!', unreadCount: 2 },
     ]);
 
@@ -78,8 +67,7 @@ describe('list_conversations', () => {
   });
 
   it('returns empty message when no conversations', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listConversations.mockResolvedValue([]);
 
     const handler = getToolHandler('list_conversations');
     const result = await handler({});
@@ -88,8 +76,7 @@ describe('list_conversations', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Unauthorized'); });
+    mockClient.listConversations.mockRejectedValue(new Error('Unauthorized'));
 
     const handler = getToolHandler('list_conversations');
     const result = await handler({});
@@ -100,11 +87,12 @@ describe('list_conversations', () => {
 });
 
 describe('get_conversation', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns conversation details', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.getConversation.mockResolvedValue({
       id: 'c1', platform: 'twitter', participantName: 'Bob', unreadCount: 0, lastMessage: 'Thanks!',
     });
 
@@ -117,8 +105,7 @@ describe('get_conversation', () => {
   });
 
   it('returns empty when conversation not found', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue(null);
+    mockClient.getConversation.mockResolvedValue(null);
 
     const handler = getToolHandler('get_conversation');
     const result = await handler({ conversationId: 'none', accountId: 'a1' });
@@ -128,11 +115,12 @@ describe('get_conversation', () => {
 });
 
 describe('list_messages', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted message list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listMessages.mockResolvedValue([
       { id: 'm1', senderName: 'Alice', message: 'Hello!', sentAt: '2024-06-01T10:00:00Z', isOutgoing: false },
       { id: 'm2', senderName: 'Me', message: 'Hi Alice!', sentAt: '2024-06-01T10:05:00Z', isOutgoing: true },
     ]);
@@ -150,12 +138,12 @@ describe('list_messages', () => {
 });
 
 describe('send_message', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('sends a message and confirms', async () => {
-    const sdk = mockSdk();
-    sdk.messages.sendInboxMessage.mockResolvedValue({ data: { id: 'new-m1', sentAt: '2024-06-01T12:00:00Z' } });
-    vi.mocked(unwrap).mockReturnValue({ id: 'new-m1', sentAt: '2024-06-01T12:00:00Z' });
+    mockClient.sendMessage.mockResolvedValue({ id: 'new-m1', sentAt: '2024-06-01T12:00:00Z' });
 
     const handler = getToolHandler('send_message');
     const result = await handler({ conversationId: 'c1', accountId: 'a1', message: 'Hello!' });
@@ -168,8 +156,7 @@ describe('send_message', () => {
   });
 
   it('returns error on send failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Rate limited'); });
+    mockClient.sendMessage.mockRejectedValue(new Error('Rate limited'));
 
     const handler = getToolHandler('send_message');
     const result = await handler({ conversationId: 'c1', accountId: 'a1', message: 'test' });
@@ -180,11 +167,12 @@ describe('send_message', () => {
 });
 
 describe('edit_message', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('edits a message and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
+    mockClient.editMessage.mockResolvedValue(undefined);
 
     const handler = getToolHandler('edit_message');
     const result = await handler({ conversationId: 'c1', messageId: 'm1', message: 'Updated text' });

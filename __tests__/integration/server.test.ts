@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 // ---------------------------------------------------------------------------
 // Mock the server module the same way tool tests do — a plain object with
@@ -9,16 +12,18 @@ vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
-// Mock SDK client so tool side-effect imports don't blow up
+// Mock the client module with the new direct HTTP client pattern
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((r: { data?: unknown; error?: unknown }) => {
-    if (r.error) throw new Error(String(r.error));
-    return r.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
+
+beforeEach(() => {
+  mockClient = createMockClient();
+});
 
 vi.mock('../../src/config/config.js', () => ({
   getLateApiKey: vi.fn(),

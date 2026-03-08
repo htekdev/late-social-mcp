@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap, toApiPlatform } from '../client/lateClient.js';
+import { getClient, toApiPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -17,24 +17,18 @@ server.tool(
   },
   async ({ postId, platform, fromDate, toDate, limit }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.analytics.getAnalytics({
-          query: {
-            postId,
-            fromDate,
-            toDate,
-            platform: platform ? toApiPlatform(platform) : undefined,
-            limit,
-          },
-        }),
-      );
+      const client = getClient();
+      const items = await client.getAnalytics({
+        postId,
+        fromDate,
+        toDate,
+        platform: platform ? toApiPlatform(platform) : undefined,
+        limit,
+      });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (items.length === 0) {
         return textResponse('No analytics data found for the given filters.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['📊 Post Analytics', '═'.repeat(50)];
 
       for (const item of items) {
@@ -75,27 +69,21 @@ server.tool(
   },
   async ({ dateFrom, dateTo, platforms, limit }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const platformsList = platforms
         ? platforms.split(',').map((p) => toApiPlatform(p.trim())).join(',')
         : undefined;
 
-      const data = unwrap(
-        await late.analytics.getDailyMetrics({
-          query: {
-            dateFrom,
-            dateTo,
-            platforms: platformsList,
-            limit,
-          },
-        }),
-      );
+      const items = await client.getDailyMetrics({
+        dateFrom,
+        dateTo,
+        platforms: platformsList,
+        limit,
+      });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (items.length === 0) {
         return textResponse('No daily metrics found for the given filters.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['📈 Daily Metrics', '═'.repeat(60)];
       lines.push(
         padRight('Date', 14) +
@@ -108,7 +96,7 @@ server.tool(
       lines.push('─'.repeat(60));
 
       for (const item of items) {
-        const m = item as Record<string, unknown>;
+        const m = item;
         lines.push(
           padRight(String(m.date ?? '—'), 14) +
           padRight(String(m.impressions ?? '—'), 14) +
@@ -141,18 +129,12 @@ server.tool(
   },
   async ({ accountId, dateFrom, dateTo, limit }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.accounts.getFollowerStats({
-          query: { dateFrom, dateTo, accountId, limit },
-        }),
-      );
+      const client = getClient();
+      const items = await client.getFollowerStats({ dateFrom, dateTo, accountId, limit });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (items.length === 0) {
         return textResponse('No follower stats found for the given filters.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['👥 Follower Stats', '═'.repeat(55)];
 
       for (const item of items) {
@@ -189,18 +171,12 @@ server.tool(
   },
   async ({ postId, dateFrom, dateTo }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.analytics.getPostTimeline({
-          query: { postId, dateFrom, dateTo },
-        }),
-      );
+      const client = getClient();
+      const items = await client.getPostTimeline(postId, { dateFrom, dateTo });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (items.length === 0) {
         return textResponse(`No timeline data found for post ${postId}.`);
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = [
         `📅 Post Timeline — ${postId}`,
         '═'.repeat(60),
@@ -244,18 +220,12 @@ server.tool(
   },
   async ({ videoId, dateFrom, dateTo }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.analytics.getYouTubeDailyViews({
-          query: { videoId, dateFrom, dateTo },
-        }),
-      );
+      const client = getClient();
+      const items = await client.getYouTubeDailyViews(videoId, { dateFrom, dateTo });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (items.length === 0) {
         return textResponse(`No YouTube view data found for video ${videoId}.`);
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = [
         `▶️  YouTube Daily Views — ${videoId}`,
         '═'.repeat(40),
@@ -265,7 +235,7 @@ server.tool(
 
       let totalViews = 0;
       for (const item of items) {
-        const v = item as Record<string, unknown>;
+        const v = item;
         const views = Number(v.views ?? v.count ?? 0);
         totalViews += views;
         lines.push(padRight(String(v.date ?? '—'), 16) + String(views));

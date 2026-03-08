@@ -1,21 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any imports that trigger side-effects
 // ---------------------------------------------------------------------------
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 vi.mock('../../src/config/config.js', () => ({
@@ -40,8 +41,8 @@ vi.mock('node:fs', () => ({
 // ---------------------------------------------------------------------------
 
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
-import { getLateApiKey, loadConfig, saveConfig } from '../../src/config/config.js';
+import { getLateApiKey } from '../../src/config/config.js';
+import { saveConfig } from '../../src/config/config.js';
 import { validateScheduleConfig } from '../../src/config/scheduleConfig.js';
 import * as fs from 'node:fs';
 
@@ -69,34 +70,12 @@ function getToolHandler(toolName: string): ToolHandler {
 }
 
 // ---------------------------------------------------------------------------
-// SDK mock factory
+// Fresh mock client before each test
 // ---------------------------------------------------------------------------
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    profiles: {
-      listProfiles: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    accounts: {
-      listAccounts: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    usage: {
-      getUsageStats: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    posts: {
-      listPosts: vi.fn().mockResolvedValue({ data: [] }),
-      getPost: vi.fn().mockResolvedValue({ data: {} }),
-      createPost: vi.fn().mockResolvedValue({ data: {} }),
-      updatePost: vi.fn().mockResolvedValue({ data: {} }),
-      deletePost: vi.fn().mockResolvedValue({ data: {} }),
-      retryPost: vi.fn().mockResolvedValue({ data: {} }),
-      unpublishPost: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
+beforeEach(() => {
+  mockClient = createMockClient();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOOL REGISTRATION
@@ -143,14 +122,12 @@ describe('setup_late', () => {
 
   it('succeeds with profiles and accounts', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key-123');
-    const sdk = mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce([
-        { name: 'Main Profile', description: 'My brand' },
-      ])
-      .mockReturnValueOnce([
-        { isActive: true, platform: 'instagram', username: 'testuser', displayName: 'Test User' },
-      ]);
+    mockClient.listProfiles.mockResolvedValue([
+      { name: 'Main Profile', description: 'My brand' },
+    ]);
+    mockClient.listAccounts.mockResolvedValue([
+      { isActive: true, platform: 'instagram', username: 'testuser', displayName: 'Test User' },
+    ]);
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -166,12 +143,10 @@ describe('setup_late', () => {
 
   it('shows inactive account with ✗ marker', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([
-        { isActive: false, platform: 'twitter', username: 'old', displayName: 'Old Account' },
-      ]);
+    mockClient.listProfiles.mockResolvedValue([]);
+    mockClient.listAccounts.mockResolvedValue([
+      { isActive: false, platform: 'twitter', username: 'old', displayName: 'Old Account' },
+    ]);
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -182,8 +157,6 @@ describe('setup_late', () => {
 
   it('handles empty profiles and accounts', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValueOnce([]).mockReturnValueOnce([]);
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -195,10 +168,7 @@ describe('setup_late', () => {
 
   it('returns error on SDK failure', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Network timeout');
-    });
+    mockClient.listProfiles.mockRejectedValue(new Error('Network timeout'));
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -224,13 +194,11 @@ describe('late_status', () => {
 
   it('returns full status with profiles, accounts, usage', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce([{ name: 'Brand', description: 'Main brand' }])
-      .mockReturnValueOnce([
-        { isActive: true, platform: 'instagram', username: 'brand', displayName: 'Brand IG' },
-      ])
-      .mockReturnValueOnce({ postsPublished: 42, postsScheduled: 5 });
+    mockClient.listProfiles.mockResolvedValue([{ name: 'Brand', description: 'Main brand' }]);
+    mockClient.listAccounts.mockResolvedValue([
+      { isActive: true, platform: 'instagram', username: 'brand', displayName: 'Brand IG' },
+    ]);
+    mockClient.getUsageStats.mockResolvedValue({ postsPublished: 42, postsScheduled: 5 });
 
     const handler = getToolHandler('late_status');
     const result = await handler({});
@@ -246,11 +214,7 @@ describe('late_status', () => {
 
   it('shows empty state for no profiles', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce(null);
+    mockClient.getUsageStats.mockResolvedValue(null);
 
     const handler = getToolHandler('late_status');
     const result = await handler({});
@@ -262,13 +226,9 @@ describe('late_status', () => {
 
   it('shows inactive account with red indicator', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('key');
-    mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([
-        { isActive: false, platform: 'linkedin', username: 'corp', displayName: 'Corp LI' },
-      ])
-      .mockReturnValueOnce({});
+    mockClient.listAccounts.mockResolvedValue([
+      { isActive: false, platform: 'linkedin', username: 'corp', displayName: 'Corp LI' },
+    ]);
 
     const handler = getToolHandler('late_status');
     const result = await handler({});
@@ -278,10 +238,7 @@ describe('late_status', () => {
 
   it('returns error on SDK failure', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('key');
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Unauthorized');
-    });
+    mockClient.listProfiles.mockRejectedValue(new Error('Unauthorized'));
 
     const handler = getToolHandler('late_status');
     const result = await handler({});
@@ -375,8 +332,7 @@ describe('list_posts', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns formatted post list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listPosts.mockResolvedValue([
       {
         id: 'post-1',
         status: 'scheduled',
@@ -397,9 +353,6 @@ describe('list_posts', () => {
   });
 
   it('returns empty message when no posts found', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('list_posts');
     const result = await handler({});
 
@@ -407,9 +360,6 @@ describe('list_posts', () => {
   });
 
   it('includes filter info in empty message', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
-
     const handler = getToolHandler('list_posts');
     const result = await handler({ status: 'draft', platform: 'instagram' });
 
@@ -418,27 +368,21 @@ describe('list_posts', () => {
     expect(result.content[0].text).toContain('platform=instagram');
   });
 
-  it('passes filters to the SDK', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
-
+  it('passes filters to the client', async () => {
     const handler = getToolHandler('list_posts');
     await handler({ status: 'published', platform: 'x', search: 'hello', limit: 5, page: 2 });
 
-    expect(sdk.posts.listPosts).toHaveBeenCalledWith({
-      query: {
-        status: 'published',
-        platform: 'twitter', // 'x' normalised to 'twitter'
-        search: 'hello',
-        limit: 5,
-        page: 2,
-      },
+    expect(mockClient.listPosts).toHaveBeenCalledWith({
+      status: 'published',
+      platform: 'twitter', // 'x' normalised to 'twitter'
+      search: 'hello',
+      limit: 5,
+      page: 2,
     });
   });
 
   it('returns multiple posts formatted with indices', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listPosts.mockResolvedValue([
       { id: 'p1', status: 'draft', content: 'First', platforms: ['twitter'], scheduledFor: null },
       { id: 'p2', status: 'published', content: 'Second', platforms: ['instagram'], scheduledFor: null },
     ]);
@@ -451,11 +395,8 @@ describe('list_posts', () => {
     expect(result.content[0].text).toContain('p2');
   });
 
-  it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Server error');
-    });
+  it('returns error on API failure', async () => {
+    mockClient.listPosts.mockRejectedValue(new Error('Server error'));
 
     const handler = getToolHandler('list_posts');
     const result = await handler({});
@@ -469,8 +410,7 @@ describe('get_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns full post details', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.getPost.mockResolvedValue({
       id: 'post-42',
       status: 'published',
       content: 'Detailed content here',
@@ -497,23 +437,19 @@ describe('get_post', () => {
     expect(result.content[0].text).toContain('A photo');
   });
 
-  it('calls SDK with correct postId', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
-      id: 'abc', status: 'draft', content: '', platforms: [],
+  it('calls client with correct postId', async () => {
+    mockClient.getPost.mockResolvedValue({
+      _id: 'abc', status: 'draft', content: '', platforms: [],
     });
 
     const handler = getToolHandler('get_post');
     await handler({ postId: 'abc' });
 
-    expect(sdk.posts.getPost).toHaveBeenCalledWith({ path: { postId: 'abc' } });
+    expect(mockClient.getPost).toHaveBeenCalledWith('abc');
   });
 
   it('returns error on not-found', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Post not found');
-    });
+    mockClient.getPost.mockRejectedValue(new Error('Post not found'));
 
     const handler = getToolHandler('get_post');
     const result = await handler({ postId: 'nonexistent' });
@@ -528,8 +464,7 @@ describe('create_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('creates a post with platforms', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'new-1', status: 'scheduled' });
+    mockClient.createPost.mockResolvedValue({ _id: 'new-1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
     const result = await handler({
@@ -541,30 +476,26 @@ describe('create_post', () => {
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain('scheduled successfully');
     expect(result.content[0].text).toContain('new-1');
-    expect(sdk.posts.createPost).toHaveBeenCalledWith({
-      body: {
-        content: 'My new post',
-        platforms: ['twitter', 'instagram'],
-        scheduledFor: '2025-08-01T12:00:00Z',
-      },
+    expect(mockClient.createPost).toHaveBeenCalledWith({
+      content: 'My new post',
+      platforms: ['twitter', 'instagram'],
+      scheduledFor: '2025-08-01T12:00:00Z',
     });
   });
 
   it('normalises x to twitter in platform list', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1', status: 'draft' });
+    mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'draft' });
 
     const handler = getToolHandler('create_post');
     await handler({ content: 'test', platforms: 'x, linkedin' });
 
-    const callBody = (sdk.posts.createPost as ReturnType<typeof vi.fn>).mock.calls[0][0].body;
-    expect(callBody.platforms).toContain('twitter');
-    expect(callBody.platforms).toContain('linkedin');
+    const callArgs = mockClient.createPost.mock.calls[0][0] as { platforms: string[] };
+    expect(callArgs.platforms).toContain('twitter');
+    expect(callArgs.platforms).toContain('linkedin');
   });
 
   it('handles publishNow flag', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1', status: 'published' });
+    mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'published' });
 
     const handler = getToolHandler('create_post');
     const result = await handler({
@@ -577,8 +508,7 @@ describe('create_post', () => {
   });
 
   it('handles isDraft flag', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1', status: 'draft' });
+    mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'draft' });
 
     const handler = getToolHandler('create_post');
     const result = await handler({
@@ -591,8 +521,7 @@ describe('create_post', () => {
   });
 
   it('includes mediaUrls in request', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1', status: 'scheduled' });
+    mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
     await handler({
@@ -601,8 +530,8 @@ describe('create_post', () => {
       mediaUrls: 'https://img1.jpg, https://img2.png',
     });
 
-    const callBody = (sdk.posts.createPost as ReturnType<typeof vi.fn>).mock.calls[0][0].body;
-    expect(callBody.mediaUrls).toEqual(['https://img1.jpg', 'https://img2.png']);
+    const callArgs = mockClient.createPost.mock.calls[0][0] as { mediaUrls: string[] };
+    expect(callArgs.mediaUrls).toEqual(['https://img1.jpg', 'https://img2.png']);
   });
 
   it('returns error for empty platforms', async () => {
@@ -613,11 +542,8 @@ describe('create_post', () => {
     expect(result.content[0].text).toContain('At least one platform');
   });
 
-  it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Rate limit exceeded');
-    });
+  it('returns error on API failure', async () => {
+    mockClient.createPost.mockRejectedValue(new Error('Rate limit exceeded'));
 
     const handler = getToolHandler('create_post');
     const result = await handler({ content: 'test', platforms: 'twitter' });
@@ -628,8 +554,7 @@ describe('create_post', () => {
   });
 
   it('shows scheduled time in response when provided', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'p1', status: 'scheduled' });
+    mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
     const result = await handler({
@@ -646,8 +571,7 @@ describe('update_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('updates post content', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'up-1', status: 'scheduled' });
+    mockClient.updatePost.mockResolvedValue({ _id: 'up-1', status: 'scheduled' });
 
     const handler = getToolHandler('update_post');
     const result = await handler({ postId: 'up-1', content: 'Updated content' });
@@ -656,15 +580,11 @@ describe('update_post', () => {
     expect(result.content[0].text).toContain('updated successfully');
     expect(result.content[0].text).toContain('up-1');
     expect(result.content[0].text).toContain('content');
-    expect(sdk.posts.updatePost).toHaveBeenCalledWith({
-      path: { postId: 'up-1' },
-      body: { content: 'Updated content' },
-    });
+    expect(mockClient.updatePost).toHaveBeenCalledWith('up-1', { content: 'Updated content' });
   });
 
   it('updates schedule', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'up-2', status: 'scheduled' });
+    mockClient.updatePost.mockResolvedValue({ _id: 'up-2', status: 'scheduled' });
 
     const handler = getToolHandler('update_post');
     const result = await handler({
@@ -684,11 +604,8 @@ describe('update_post', () => {
     expect(result.content[0].text).toContain('Nothing to update');
   });
 
-  it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Post not found');
-    });
+  it('returns error on API failure', async () => {
+    mockClient.updatePost.mockRejectedValue(new Error('Post not found'));
 
     const handler = getToolHandler('update_post');
     const result = await handler({ postId: 'bad-id', content: 'new' });
@@ -702,8 +619,7 @@ describe('delete_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('deletes a post successfully', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue(undefined);
+    mockClient.deletePost.mockResolvedValue(undefined);
 
     const handler = getToolHandler('delete_post');
     const result = await handler({ postId: 'del-1' });
@@ -711,14 +627,11 @@ describe('delete_post', () => {
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain('del-1');
     expect(result.content[0].text).toContain('deleted successfully');
-    expect(sdk.posts.deletePost).toHaveBeenCalledWith({ path: { postId: 'del-1' } });
+    expect(mockClient.deletePost).toHaveBeenCalledWith('del-1');
   });
 
   it('returns error on not-found', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Not found');
-    });
+    mockClient.deletePost.mockRejectedValue(new Error('Not found'));
 
     const handler = getToolHandler('delete_post');
     const result = await handler({ postId: 'missing' });
@@ -733,9 +646,8 @@ describe('retry_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('retries a failed post', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
-      id: 'retry-1',
+    mockClient.retryPost.mockResolvedValue({
+      _id: 'retry-1',
       status: 'pending',
       platforms: ['twitter', 'instagram'],
     });
@@ -751,10 +663,7 @@ describe('retry_post', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Cannot retry: already published');
-    });
+    mockClient.retryPost.mockRejectedValue(new Error('Cannot retry: already published'));
 
     const handler = getToolHandler('retry_post');
     const result = await handler({ postId: 'pub-1' });
@@ -769,8 +678,7 @@ describe('unpublish_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('unpublishes from specified platforms', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue(undefined);
+    mockClient.unpublishPost.mockResolvedValue(undefined);
 
     const handler = getToolHandler('unpublish_post');
     const result = await handler({ postId: 'unp-1', platforms: 'twitter, instagram' });
@@ -779,23 +687,16 @@ describe('unpublish_post', () => {
     expect(result.content[0].text).toContain('unpublished successfully');
     expect(result.content[0].text).toContain('unp-1');
     expect(result.content[0].text).toContain('twitter, instagram');
-    expect(sdk.posts.unpublishPost).toHaveBeenCalledWith({
-      path: { postId: 'unp-1' },
-      body: { platforms: ['twitter', 'instagram'] },
-    });
+    expect(mockClient.unpublishPost).toHaveBeenCalledWith('unp-1', ['twitter', 'instagram']);
   });
 
   it('normalises x to twitter', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue(undefined);
+    mockClient.unpublishPost.mockResolvedValue(undefined);
 
     const handler = getToolHandler('unpublish_post');
     await handler({ postId: 'unp-2', platforms: 'x' });
 
-    expect(sdk.posts.unpublishPost).toHaveBeenCalledWith({
-      path: { postId: 'unp-2' },
-      body: { platforms: ['twitter'] },
-    });
+    expect(mockClient.unpublishPost).toHaveBeenCalledWith('unp-2', ['twitter']);
   });
 
   it('returns error for empty platforms', async () => {
@@ -806,11 +707,8 @@ describe('unpublish_post', () => {
     expect(result.content[0].text).toContain('At least one platform');
   });
 
-  it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Not found');
-    });
+  it('returns error on API failure', async () => {
+    mockClient.unpublishPost.mockRejectedValue(new Error('Not found'));
 
     const handler = getToolHandler('unpublish_post');
     const result = await handler({ postId: 'bad', platforms: 'twitter' });
@@ -867,10 +765,9 @@ describe('bulk_upload_posts', () => {
   });
 
   it('creates posts in bulk and reports results', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce({ id: 'bulk-1' })
-      .mockReturnValueOnce({ id: 'bulk-2' });
+    mockClient.createPost
+      .mockResolvedValueOnce({ _id: 'bulk-1' })
+      .mockResolvedValueOnce({ _id: 'bulk-2' });
 
     const handler = getToolHandler('bulk_upload_posts');
     const csv = [
@@ -890,12 +787,9 @@ describe('bulk_upload_posts', () => {
   });
 
   it('reports partial failures', async () => {
-    mockSdk();
-    vi.mocked(unwrap)
-      .mockReturnValueOnce({ id: 'ok-1' })
-      .mockImplementationOnce(() => {
-        throw new Error('Invalid platform');
-      });
+    mockClient.createPost
+      .mockResolvedValueOnce({ _id: 'ok-1' })
+      .mockRejectedValueOnce(new Error('Invalid platform'));
 
     const handler = getToolHandler('bulk_upload_posts');
     const csv = [
@@ -932,8 +826,7 @@ describe('bulk_upload_posts', () => {
   });
 
   it('handles CSV with quoted fields containing commas', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'q1' });
+    mockClient.createPost.mockResolvedValue({ _id: 'q1' });
 
     const handler = getToolHandler('bulk_upload_posts');
     const csv = 'content,platforms\n"Hello, world!",twitter';
@@ -945,15 +838,14 @@ describe('bulk_upload_posts', () => {
   });
 
   it('splits platforms on pipe and semicolon delimiters', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'multi-1' });
+    mockClient.createPost.mockResolvedValue({ _id: 'multi-1' });
 
     const handler = getToolHandler('bulk_upload_posts');
     const csv = 'content,platforms\nTest,twitter|instagram;linkedin';
 
     await handler({ csvContent: csv });
 
-    const callBody = (sdk.posts.createPost as ReturnType<typeof vi.fn>).mock.calls[0][0].body;
-    expect(callBody.platforms).toEqual(['twitter', 'instagram', 'linkedin']);
+    const callArgs = mockClient.createPost.mock.calls[0][0] as { platforms: string[] };
+    expect(callArgs.platforms).toEqual(['twitter', 'instagram', 'linkedin']);
   });
 });

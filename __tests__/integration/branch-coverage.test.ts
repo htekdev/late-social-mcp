@@ -6,21 +6,22 @@
  * existing unit / integration tests do NOT already cover.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 vi.mock('../../src/config/scheduleConfig.js', () => ({
@@ -68,7 +69,6 @@ vi.mock('../../src/config/scheduleConfig.js', () => ({
 // ── Imports (after mocks) ──────────────────────────────────────────────────────
 
 import { server } from '../../src/mcpServer.js';
-import { getClient } from '../../src/client/lateClient.js';
 
 // Side-effect imports register tool handlers
 await import('../../src/tools/engagement/comments.js');
@@ -115,82 +115,16 @@ function txt(res: { content: { text: string }[] }): string {
   return res.content[0].text;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    comments: {
-      listInboxComments: vi.fn().mockResolvedValue({ data: [] }),
-      getInboxPostComments: vi.fn().mockResolvedValue({ data: [] }),
-      replyToInboxPost: vi.fn().mockResolvedValue({ data: {} }),
-      deleteInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      hideInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      likeInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      sendPrivateReplyToComment: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    messages: {
-      listInboxConversations: vi.fn().mockResolvedValue({ data: [] }),
-      getInboxConversation: vi.fn().mockResolvedValue({ data: {} }),
-      getInboxConversationMessages: vi.fn().mockResolvedValue({ data: [] }),
-      sendInboxMessage: vi.fn().mockResolvedValue({ data: {} }),
-      editInboxMessage: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    reviews: {
-      listInboxReviews: vi.fn().mockResolvedValue({ data: [] }),
-      replyToInboxReview: vi.fn().mockResolvedValue({ data: {} }),
-      deleteInboxReviewReply: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    analytics: {
-      getAnalytics: vi.fn().mockResolvedValue({ data: [] }),
-      getDailyMetrics: vi.fn().mockResolvedValue({ data: [] }),
-      getPostTimeline: vi.fn().mockResolvedValue({ data: [] }),
-      getYouTubeDailyViews: vi.fn().mockResolvedValue({ data: [] }),
-      getBestTimeToPost: vi.fn().mockResolvedValue({ data: [] }),
-      getPostingFrequency: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    accounts: {
-      listAccounts: vi.fn().mockResolvedValue({ data: [] }),
-      getAccountHealth: vi.fn().mockResolvedValue({ data: {} }),
-      getAllAccountsHealth: vi.fn().mockResolvedValue({ data: [] }),
-      getFollowerStats: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    profiles: {
-      listProfiles: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    usage: {
-      getUsageStats: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    validate: {
-      validatePost: vi.fn().mockResolvedValue({ data: {} }),
-      validatePostLength: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    tools: {
-      checkInstagramHashtags: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    webhooks: {
-      getWebhookSettings: vi.fn().mockResolvedValue({ data: [] }),
-      createWebhookSettings: vi.fn().mockResolvedValue({ data: {} }),
-      updateWebhookSettings: vi.fn().mockResolvedValue({ data: {} }),
-      testWebhook: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    queue: {
-      listQueueSlots: vi.fn().mockResolvedValue({ data: [] }),
-      createQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      updateQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      deleteQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      previewQueue: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    posts: {
-      listPosts: vi.fn().mockResolvedValue({ data: [] }),
-      updatePost: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
+function setupSchedulerPosts(posts: unknown[] = []) {
+  mockClient.listPosts.mockResolvedValue(posts);
 }
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockClient = createMockClient();
+});
 
 // ════════════════════════════════════════════════════════════════════════════════
 // comments.ts — nullish-coalescing fallbacks & alternative field names
@@ -198,10 +132,9 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('comments.ts branch coverage', () => {
   it('list_commented_posts: uses id when postId is absent and caption when content is absent', async () => {
-    const sdk = mockSdk();
-    sdk.comments.listInboxComments.mockResolvedValue({
-      data: [{ id: 'p1', platform: 'ig', caption: 'my caption', commentCount: 5, latestComment: 'nice!', createdAt: '2024-01-01' }],
-    });
+    mockClient.listCommentedPosts.mockResolvedValue(
+      [{ id: 'p1', platform: 'ig', caption: 'my caption', commentCount: 5, latestComment: 'nice!', createdAt: '2024-01-01' }],
+    );
     const res = await h('list_commented_posts')({});
     const text = txt(res);
     expect(text).toContain('p1');
@@ -211,11 +144,10 @@ describe('comments.ts branch coverage', () => {
     expect(text).toContain('2024-01-01');
   });
 
-  it('list_commented_posts: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.comments.listInboxComments.mockResolvedValue({
-      data: { postId: 'p2', platform: 'fb', content: 'hello' },
-    });
+  it('list_commented_posts: single-item array response', async () => {
+    mockClient.listCommentedPosts.mockResolvedValue(
+      [{ postId: 'p2', platform: 'fb', content: 'hello' }],
+    );
     const res = await h('list_commented_posts')({});
     const text = txt(res);
     expect(text).toContain('p2');
@@ -223,10 +155,9 @@ describe('comments.ts branch coverage', () => {
   });
 
   it('list_commented_posts: post with no optional fields still renders', async () => {
-    const sdk = mockSdk();
-    sdk.comments.listInboxComments.mockResolvedValue({
-      data: [{ platform: 'ig' }],
-    });
+    mockClient.listCommentedPosts.mockResolvedValue(
+      [{ platform: 'ig' }],
+    );
     const res = await h('list_commented_posts')({});
     expect(txt(res)).toContain('Platform:      ig');
     expect(txt(res)).not.toContain('Post ID:');
@@ -235,13 +166,12 @@ describe('comments.ts branch coverage', () => {
   });
 
   it('get_post_comments: fallback to author/username fields and text/comment/commentId fields', async () => {
-    const sdk = mockSdk();
-    sdk.comments.getInboxPostComments.mockResolvedValue({
-      data: [
+    mockClient.getPostComments.mockResolvedValue(
+      [
         { author: 'alice', timestamp: '2024-02-01', text: 'great post', commentId: 'c99', likes: 10, replyCount: 2 },
         { username: 'bob', comment: 'thanks!', likes: 0 },
       ],
-    });
+    );
     const res = await h('get_post_comments')({ postId: 'p1' });
     const text = txt(res);
     expect(text).toContain('alice');
@@ -255,10 +185,9 @@ describe('comments.ts branch coverage', () => {
   });
 
   it('get_post_comments: comment with no message/text/comment shows no content line', async () => {
-    const sdk = mockSdk();
-    sdk.comments.getInboxPostComments.mockResolvedValue({
-      data: [{ authorName: 'charlie', createdAt: '2024-03-01' }],
-    });
+    mockClient.getPostComments.mockResolvedValue(
+      [{ authorName: 'charlie', createdAt: '2024-03-01' }],
+    );
     const res = await h('get_post_comments')({ postId: 'p1' });
     const text = txt(res);
     expect(text).toContain('charlie');
@@ -267,57 +196,50 @@ describe('comments.ts branch coverage', () => {
     expect(text).not.toContain('Replies:');
   });
 
-  it('get_post_comments: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.comments.getInboxPostComments.mockResolvedValue({
-      data: { authorName: 'dan', message: 'cool', id: 'c1' },
-    });
+  it('get_post_comments: single-item array response', async () => {
+    mockClient.getPostComments.mockResolvedValue(
+      [{ authorName: 'dan', message: 'cool', id: 'c1' }],
+    );
     const res = await h('get_post_comments')({ postId: 'px' });
     expect(txt(res)).toContain('dan');
     expect(txt(res)).toContain('cool');
   });
 
   it('reply_to_comment: response with no id omits Reply ID line', async () => {
-    const sdk = mockSdk();
-    sdk.comments.replyToInboxPost.mockResolvedValue({ data: {} });
+    mockClient.replyToComment.mockResolvedValue({});
     const res = await h('reply_to_comment')({ postId: 'p1', accountId: 'a1', commentId: 'c1', message: 'thanks' });
     expect(txt(res)).not.toContain('Reply ID:');
     expect(txt(res)).toContain('Reply Sent');
   });
 
   it('reply_to_comment: response with id includes Reply ID line', async () => {
-    const sdk = mockSdk();
-    sdk.comments.replyToInboxPost.mockResolvedValue({ data: { id: 'r1' } });
+    mockClient.replyToComment.mockResolvedValue({ id: 'r1' });
     const res = await h('reply_to_comment')({ postId: 'p1', accountId: 'a1', commentId: 'c1', message: 'thanks' });
     expect(txt(res)).toContain('Reply ID:   r1');
   });
 
   it('reply_to_comment: long message is truncated', async () => {
-    const sdk = mockSdk();
-    sdk.comments.replyToInboxPost.mockResolvedValue({ data: {} });
+    mockClient.replyToComment.mockResolvedValue({});
     const longMsg = 'a'.repeat(150);
     const res = await h('reply_to_comment')({ postId: 'p1', accountId: 'a1', commentId: 'c1', message: longMsg });
     expect(txt(res)).toContain('…');
   });
 
   it('send_private_reply: response without id omits Reply ID', async () => {
-    const sdk = mockSdk();
-    sdk.comments.sendPrivateReplyToComment.mockResolvedValue({ data: {} });
+    mockClient.sendPrivateReply.mockResolvedValue({});
     const res = await h('send_private_reply')({ commentId: 'c1', accountId: 'a1', message: 'hi' });
     expect(txt(res)).toContain('Private Reply Sent');
     expect(txt(res)).not.toContain('Reply ID:');
   });
 
   it('send_private_reply: response with id includes Reply ID', async () => {
-    const sdk = mockSdk();
-    sdk.comments.sendPrivateReplyToComment.mockResolvedValue({ data: { id: 'pr1' } });
+    mockClient.sendPrivateReply.mockResolvedValue({ id: 'pr1' });
     const res = await h('send_private_reply')({ commentId: 'c1', accountId: 'a1', message: 'hi' });
     expect(txt(res)).toContain('Reply ID:   pr1');
   });
 
   it('list_commented_posts: non-Error thrown in catch uses String(err)', async () => {
-    const sdk = mockSdk();
-    sdk.comments.listInboxComments.mockRejectedValue('string error');
+    mockClient.listCommentedPosts.mockRejectedValue('string error');
     const res = await h('list_commented_posts')({});
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('string error');
@@ -330,12 +252,11 @@ describe('comments.ts branch coverage', () => {
 
 describe('messages.ts branch coverage', () => {
   it('list_conversations: participant fallback, lastMessage, lastMessageAt/updatedAt, unreadCount', async () => {
-    const sdk = mockSdk();
-    sdk.messages.listInboxConversations.mockResolvedValue({
-      data: [
+    mockClient.listConversations.mockResolvedValue(
+      [
         { id: 'conv1', platform: 'ig', participant: 'user1', lastMessage: 'hey there this is a message', updatedAt: '2024-01-01', unreadCount: 3 },
       ],
-    });
+    );
     const res = await h('list_conversations')({});
     const text = txt(res);
     expect(text).toContain('Participant:     user1');
@@ -345,20 +266,18 @@ describe('messages.ts branch coverage', () => {
   });
 
   it('list_conversations: uses participantName when available', async () => {
-    const sdk = mockSdk();
-    sdk.messages.listInboxConversations.mockResolvedValue({
-      data: [{ id: 'c2', participantName: 'Jane', lastMessageAt: '2024-05-01' }],
-    });
+    mockClient.listConversations.mockResolvedValue(
+      [{ id: 'c2', participantName: 'Jane', lastMessageAt: '2024-05-01' }],
+    );
     const res = await h('list_conversations')({});
     expect(txt(res)).toContain('Participant:     Jane');
     expect(txt(res)).toContain('Last Activity:   2024-05-01');
   });
 
   it('list_conversations: conversation without optional fields still renders', async () => {
-    const sdk = mockSdk();
-    sdk.messages.listInboxConversations.mockResolvedValue({
-      data: [{ id: 'c3' }],
-    });
+    mockClient.listConversations.mockResolvedValue(
+      [{ id: 'c3' }],
+    );
     const res = await h('list_conversations')({});
     expect(txt(res)).toContain('Conversation ID: c3');
     expect(txt(res)).not.toContain('Participant:');
@@ -366,24 +285,22 @@ describe('messages.ts branch coverage', () => {
     expect(txt(res)).not.toContain('Unread:');
   });
 
-  it('list_conversations: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.messages.listInboxConversations.mockResolvedValue({
-      data: { id: 'c4', platform: 'fb' },
-    });
+  it('list_conversations: single-item array response', async () => {
+    mockClient.listConversations.mockResolvedValue(
+      [{ id: 'c4', platform: 'fb' }],
+    );
     const res = await h('list_conversations')({});
     expect(txt(res)).toContain('c4');
   });
 
   it('get_conversation: all optional fields present', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversation.mockResolvedValue({
-      data: {
+    mockClient.getConversation.mockResolvedValue(
+      {
         id: 'c5', platform: 'ig', participantName: 'Alice', participantUsername: '@alice',
         accountId: 'acc1', lastMessage: 'hi', lastMessageAt: '2024-06-01',
         unreadCount: 0, createdAt: '2024-01-01',
       },
-    });
+    );
     const res = await h('get_conversation')({ conversationId: 'c5', accountId: 'acc1' });
     const text = txt(res);
     expect(text).toContain('Alice');
@@ -396,20 +313,18 @@ describe('messages.ts branch coverage', () => {
   });
 
   it('get_conversation: participant fallback and updatedAt fallback', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversation.mockResolvedValue({
-      data: { id: 'c6', participant: 'Bob', updatedAt: '2024-07-01' },
-    });
+    mockClient.getConversation.mockResolvedValue(
+      { id: 'c6', participant: 'Bob', updatedAt: '2024-07-01' },
+    );
     const res = await h('get_conversation')({ conversationId: 'c6', accountId: 'a1' });
     expect(txt(res)).toContain('Participant:     Bob');
     expect(txt(res)).toContain('Last Activity:   2024-07-01');
   });
 
-  it('list_messages: isOutgoing=true shows → (sent), text fallback, single object', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversationMessages.mockResolvedValue({
-      data: { senderName: 'Me', sentAt: '2024-01-01T10:00:00Z', isOutgoing: true, text: 'hello from text field', id: 'm1' },
-    });
+  it('list_messages: isOutgoing=true shows → (sent), text fallback', async () => {
+    mockClient.listMessages.mockResolvedValue(
+      [{ senderName: 'Me', sentAt: '2024-01-01T10:00:00Z', isOutgoing: true, text: 'hello from text field', id: 'm1' }],
+    );
     const res = await h('list_messages')({ conversationId: 'c1', accountId: 'a1' });
     const text = txt(res);
     expect(text).toContain('→ (sent)');
@@ -418,10 +333,9 @@ describe('messages.ts branch coverage', () => {
   });
 
   it('list_messages: isOutgoing=false shows ← (received), content fallback', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversationMessages.mockResolvedValue({
-      data: [{ sender: 'Other', createdAt: '2024-01-02', isOutgoing: false, content: 'msg from content' }],
-    });
+    mockClient.listMessages.mockResolvedValue(
+      [{ sender: 'Other', createdAt: '2024-01-02', isOutgoing: false, content: 'msg from content' }],
+    );
     const res = await h('list_messages')({ conversationId: 'c1', accountId: 'a1' });
     const text = txt(res);
     expect(text).toContain('← (received)');
@@ -430,19 +344,17 @@ describe('messages.ts branch coverage', () => {
   });
 
   it('list_messages: from fallback for sender', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversationMessages.mockResolvedValue({
-      data: [{ from: 'system', timestamp: '2024-05-01', message: 'notification' }],
-    });
+    mockClient.listMessages.mockResolvedValue(
+      [{ from: 'system', timestamp: '2024-05-01', message: 'notification' }],
+    );
     const res = await h('list_messages')({ conversationId: 'c1', accountId: 'a1' });
     expect(txt(res)).toContain('system');
   });
 
   it('list_messages: message with no message/text/content omits content line', async () => {
-    const sdk = mockSdk();
-    sdk.messages.getInboxConversationMessages.mockResolvedValue({
-      data: [{ senderName: 'User', sentAt: '2024-01-01' }],
-    });
+    mockClient.listMessages.mockResolvedValue(
+      [{ senderName: 'User', sentAt: '2024-01-01' }],
+    );
     const res = await h('list_messages')({ conversationId: 'c1', accountId: 'a1' });
     const text = txt(res);
     expect(text).toContain('User');
@@ -450,26 +362,23 @@ describe('messages.ts branch coverage', () => {
   });
 
   it('send_message: response with id and sentAt', async () => {
-    const sdk = mockSdk();
-    sdk.messages.sendInboxMessage.mockResolvedValue({
-      data: { id: 'msg1', sentAt: '2024-01-01T12:00:00Z' },
-    });
+    mockClient.sendMessage.mockResolvedValue(
+      { id: 'msg1', sentAt: '2024-01-01T12:00:00Z' },
+    );
     const res = await h('send_message')({ conversationId: 'c1', accountId: 'a1', message: 'test' });
     expect(txt(res)).toContain('Message ID:   msg1');
     expect(txt(res)).toContain('Sent at:      2024-01-01T12:00:00Z');
   });
 
   it('send_message: response without id or sentAt', async () => {
-    const sdk = mockSdk();
-    sdk.messages.sendInboxMessage.mockResolvedValue({ data: {} });
+    mockClient.sendMessage.mockResolvedValue({});
     const res = await h('send_message')({ conversationId: 'c1', accountId: 'a1', message: 'test' });
     expect(txt(res)).not.toContain('Message ID:');
     expect(txt(res)).not.toContain('Sent at:');
   });
 
   it('send_message: non-Error exception uses String(err)', async () => {
-    const sdk = mockSdk();
-    sdk.messages.sendInboxMessage.mockRejectedValue(42);
+    mockClient.sendMessage.mockRejectedValue(42);
     const res = await h('send_message')({ conversationId: 'c1', accountId: 'a1', message: 'test' });
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('42');
@@ -482,10 +391,9 @@ describe('messages.ts branch coverage', () => {
 
 describe('reviews.ts branch coverage', () => {
   it('list_reviews: reviewId fallback, author fallback, text fallback, date fallback', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.listInboxReviews.mockResolvedValue({
-      data: [{ reviewId: 'rv1', author: 'bob', rating: 3, text: 'decent', date: '2024-03-01' }],
-    });
+    mockClient.listReviews.mockResolvedValue(
+      [{ reviewId: 'rv1', author: 'bob', rating: 3, text: 'decent', date: '2024-03-01' }],
+    );
     const res = await h('list_reviews')({});
     const text = txt(res);
     expect(text).toContain('rv1');
@@ -496,10 +404,9 @@ describe('reviews.ts branch coverage', () => {
   });
 
   it('list_reviews: comment fallback for review text', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.listInboxReviews.mockResolvedValue({
-      data: [{ id: 'rv2', authorName: 'Alice', comment: 'nice place', reply: 'thank you!' }],
-    });
+    mockClient.listReviews.mockResolvedValue(
+      [{ id: 'rv2', authorName: 'Alice', comment: 'nice place', reply: 'thank you!' }],
+    );
     const res = await h('list_reviews')({});
     const text = txt(res);
     expect(text).toContain('nice place');
@@ -508,10 +415,9 @@ describe('reviews.ts branch coverage', () => {
   });
 
   it('list_reviews: review without reply omits reply line', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.listInboxReviews.mockResolvedValue({
-      data: [{ id: 'rv3', authorName: 'Carol', message: 'good', rating: 5, createdAt: '2024-06-01' }],
-    });
+    mockClient.listReviews.mockResolvedValue(
+      [{ id: 'rv3', authorName: 'Carol', message: 'good', rating: 5, createdAt: '2024-06-01' }],
+    );
     const res = await h('list_reviews')({});
     expect(txt(res)).not.toContain('Your Reply:');
     expect(txt(res)).toContain('★★★★★');
@@ -519,37 +425,33 @@ describe('reviews.ts branch coverage', () => {
   });
 
   it('list_reviews: review with no optional fields only shows platform', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.listInboxReviews.mockResolvedValue({
-      data: [{ platform: 'google-business' }],
-    });
+    mockClient.listReviews.mockResolvedValue(
+      [{ platform: 'google-business' }],
+    );
     const res = await h('list_reviews')({});
     expect(txt(res)).toContain('google-business');
     expect(txt(res)).not.toContain('Review ID:');
     expect(txt(res)).not.toContain('Author:');
   });
 
-  it('list_reviews: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.listInboxReviews.mockResolvedValue({
-      data: { id: 'rv4', platform: 'fb', message: 'ok' },
-    });
+  it('list_reviews: single-item array response', async () => {
+    mockClient.listReviews.mockResolvedValue(
+      [{ id: 'rv4', platform: 'fb', message: 'ok' }],
+    );
     const res = await h('list_reviews')({});
     expect(txt(res)).toContain('rv4');
     expect(txt(res)).toContain('ok');
   });
 
   it('reply_to_review: response without id omits Reply ID', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.replyToInboxReview.mockResolvedValue({ data: {} });
+    mockClient.replyToReview.mockResolvedValue({});
     const res = await h('reply_to_review')({ reviewId: 'r1', accountId: 'a1', message: 'thanks' });
     expect(txt(res)).toContain('Review Reply Sent');
     expect(txt(res)).not.toContain('Reply ID:');
   });
 
   it('reply_to_review: non-Error exception', async () => {
-    const sdk = mockSdk();
-    sdk.reviews.replyToInboxReview.mockRejectedValue({ code: 500 });
+    mockClient.replyToReview.mockRejectedValue({ code: 500 });
     const res = await h('reply_to_review')({ reviewId: 'r1', accountId: 'a1', message: 'hi' });
     expect(res.isError).toBe(true);
   });
@@ -561,14 +463,13 @@ describe('reviews.ts branch coverage', () => {
 
 describe('analytics.ts branch coverage', () => {
   it('get_post_analytics: exercises all entry.X !== undefined conditional branches', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{
+    mockClient.getAnalytics.mockResolvedValue(
+      [{
         postId: 'p1', platform: 'ig', impressions: 1000, reach: 500,
         likes: 50, comments: 10, shares: 5, saves: 3, clicks: 20,
         engagementRate: 4.5, date: '2024-01-01',
       }],
-    });
+    );
     const res = await h('get_post_analytics')({});
     const text = txt(res);
     expect(text).toContain('Impressions:  1000');
@@ -583,10 +484,9 @@ describe('analytics.ts branch coverage', () => {
   });
 
   it('get_post_analytics: entry with zero values for all numeric fields (0 !== undefined)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{ impressions: 0, reach: 0, likes: 0, comments: 0, shares: 0, saves: 0, clicks: 0, engagementRate: 0 }],
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ impressions: 0, reach: 0, likes: 0, comments: 0, shares: 0, saves: 0, clicks: 0, engagementRate: 0 }],
+    );
     const res = await h('get_post_analytics')({});
     const text = txt(res);
     expect(text).toContain('Impressions:  0');
@@ -594,10 +494,9 @@ describe('analytics.ts branch coverage', () => {
   });
 
   it('get_post_analytics: entry with no optional metrics only shows what exists', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{ postId: 'p2' }],
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ postId: 'p2' }],
+    );
     const res = await h('get_post_analytics')({});
     const text = txt(res);
     expect(text).toContain('Post ID:      p2');
@@ -605,43 +504,39 @@ describe('analytics.ts branch coverage', () => {
     expect(text).not.toContain('Engagement:');
   });
 
-  it('get_post_analytics: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: { postId: 'p3', likes: 100 },
-    });
+  it('get_post_analytics: single-item array response', async () => {
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ postId: 'p3', likes: 100 }],
+    );
     const res = await h('get_post_analytics')({});
     expect(txt(res)).toContain('p3');
     expect(txt(res)).toContain('Likes:        100');
   });
 
   it('get_daily_metrics: nullish coalescing fallbacks render "—" for missing fields', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getDailyMetrics.mockResolvedValue({
-      data: [{ date: null, impressions: null }],
-    });
+    mockClient.getDailyMetrics.mockResolvedValue(
+      [{ date: null, impressions: null }],
+    );
     const res = await h('get_daily_metrics')({});
     const text = txt(res);
     expect(text).toContain('—');
   });
 
-  it('get_daily_metrics: single object response (non-array)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getDailyMetrics.mockResolvedValue({
-      data: { date: '2024-01-01', impressions: 500, reach: 200, likes: 30, comments: 5, shares: 2 },
-    });
+  it('get_daily_metrics: single-item array response', async () => {
+    mockClient.getDailyMetrics.mockResolvedValue(
+      [{ date: '2024-01-01', impressions: 500, reach: 200, likes: 30, comments: 5, shares: 2 }],
+    );
     const res = await h('get_daily_metrics')({});
     expect(txt(res)).toContain('2024-01-01');
   });
 
   it('get_follower_stats: exercises all entry conditional pushes including negative netChange', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getFollowerStats.mockResolvedValue({
-      data: [{
+    mockClient.getFollowerStats.mockResolvedValue(
+      [{
         accountId: 'a1', platform: 'ig', date: '2024-01-01',
         followers: 1000, following: 500, gained: 10, lost: 15, netChange: -5,
       }],
-    });
+    );
     const res = await h('get_follower_stats')({});
     const text = txt(res);
     expect(text).toContain('Followers:    1000');
@@ -652,61 +547,55 @@ describe('analytics.ts branch coverage', () => {
   });
 
   it('get_follower_stats: positive netChange gets + prefix', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getFollowerStats.mockResolvedValue({
-      data: [{ netChange: 10 }],
-    });
+    mockClient.getFollowerStats.mockResolvedValue(
+      [{ netChange: 10 }],
+    );
     const res = await h('get_follower_stats')({});
     expect(txt(res)).toContain('Net Change:   +10');
   });
 
-  it('get_follower_stats: single object response', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getFollowerStats.mockResolvedValue({
-      data: { followers: 999 },
-    });
+  it('get_follower_stats: single-item array response', async () => {
+    mockClient.getFollowerStats.mockResolvedValue(
+      [{ followers: 999 }],
+    );
     const res = await h('get_follower_stats')({});
     expect(txt(res)).toContain('999');
   });
 
-  it('get_post_timeline: timestamp fallback instead of date, single object', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: { timestamp: '2024-01-01T10:00', impressions: 100, likes: 5, comments: 1, shares: 0 },
-    });
+  it('get_post_timeline: timestamp fallback instead of date', async () => {
+    mockClient.getPostTimeline.mockResolvedValue(
+      [{ timestamp: '2024-01-01T10:00', impressions: 100, likes: 5, comments: 1, shares: 0 }],
+    );
     const res = await h('get_post_timeline')({ postId: 'p1' });
     const text = txt(res);
     expect(text).toContain('2024-01-01');
   });
 
   it('get_post_timeline: missing all fields uses "—" fallbacks', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: [{}],
-    });
+    mockClient.getPostTimeline.mockResolvedValue(
+      [{}],
+    );
     const res = await h('get_post_timeline')({ postId: 'p1' });
     expect(txt(res)).toContain('—');
   });
 
   it('get_youtube_daily_views: uses count fallback instead of views', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getYouTubeDailyViews.mockResolvedValue({
-      data: [
+    mockClient.getYouTubeDailyViews.mockResolvedValue(
+      [
         { date: '2024-01-01', count: 150 },
         { count: 200 },
       ],
-    });
+    );
     const res = await h('get_youtube_daily_views')({ videoId: 'v1' });
     const text = txt(res);
     expect(text).toContain('Total views: 350');
     expect(text).toContain('—');
   });
 
-  it('get_youtube_daily_views: single object response', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getYouTubeDailyViews.mockResolvedValue({
-      data: { views: 500, date: '2024-01-01' },
-    });
+  it('get_youtube_daily_views: single-item array response', async () => {
+    mockClient.getYouTubeDailyViews.mockResolvedValue(
+      [{ views: 500, date: '2024-01-01' }],
+    );
     const res = await h('get_youtube_daily_views')({ videoId: 'v2' });
     expect(txt(res)).toContain('Total views: 500');
   });
@@ -718,39 +607,35 @@ describe('analytics.ts branch coverage', () => {
 
 describe('accounts.ts branch coverage', () => {
   it('list_accounts: inactive account shows ❌ Inactive', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.listAccounts.mockResolvedValue({
-      data: [{ platform: 'twitter', displayName: 'Test', username: 'test', isActive: false }],
-    });
+    mockClient.listAccounts.mockResolvedValue(
+      [{ platform: 'twitter', displayName: 'Test', username: 'test', isActive: false }],
+    );
     const res = await h('list_accounts')({});
     expect(txt(res)).toContain('❌ Inactive');
   });
 
   it('list_accounts: filters by platform only', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.listAccounts.mockResolvedValue({
-      data: [{ platform: 'ig', displayName: 'Insta', username: 'ig_user', isActive: true }],
-    });
+    mockClient.listAccounts.mockResolvedValue(
+      [{ platform: 'ig', displayName: 'Insta', username: 'ig_user', isActive: true }],
+    );
     await h('list_accounts')({ platform: 'ig' });
-    expect(sdk.accounts.listAccounts).toHaveBeenCalledWith({ query: { platform: 'ig' } });
+    expect(mockClient.listAccounts).toHaveBeenCalledWith({ platform: 'ig' });
   });
 
   it('list_accounts: filters by profileId only', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.listAccounts.mockResolvedValue({ data: [] });
+    mockClient.listAccounts.mockResolvedValue([]);
     await h('list_accounts')({ profileId: 'prof1' });
-    expect(sdk.accounts.listAccounts).toHaveBeenCalledWith({ query: { profileId: 'prof1' } });
+    expect(mockClient.listAccounts).toHaveBeenCalledWith({ profileId: 'prof1' });
   });
 
   it('check_account_health: single account with recommendations', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getAccountHealth.mockResolvedValue({
-      data: {
+    mockClient.getAccountHealth.mockResolvedValue(
+      {
         tokenStatus: 'valid',
         permissions: ['read', 'write'],
         recommendations: ['Enable 2FA', 'Update token'],
       },
-    });
+    );
     const res = await h('check_account_health')({ accountId: 'a1' });
     const text = txt(res);
     expect(text).toContain('Permissions: read, write');
@@ -760,13 +645,12 @@ describe('accounts.ts branch coverage', () => {
   });
 
   it('check_account_health: all accounts with recommendations', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getAllAccountsHealth.mockResolvedValue({
-      data: [{
+    mockClient.getAllAccountsHealth.mockResolvedValue(
+      [{
         platform: 'twitter', displayName: 'My Account', tokenStatus: 'expired',
         permissions: ['read'], recommendations: ['Reconnect account'],
       }],
-    });
+    );
     const res = await h('check_account_health')({});
     const text = txt(res);
     expect(text).toContain('Recommendations: Reconnect account');
@@ -774,24 +658,22 @@ describe('accounts.ts branch coverage', () => {
   });
 
   it('check_account_health: permissions as string, no recommendations', async () => {
-    const sdk = mockSdk();
-    sdk.accounts.getAccountHealth.mockResolvedValue({
-      data: { tokenStatus: 'valid', permissions: 'all' },
-    });
+    mockClient.getAccountHealth.mockResolvedValue(
+      { tokenStatus: 'valid', permissions: 'all' },
+    );
     const res = await h('check_account_health')({ accountId: 'a2' });
     expect(txt(res)).toContain('Permissions: all');
     expect(txt(res)).not.toContain('Recommendations:');
   });
 
   it('get_usage_stats: with limits and usage objects', async () => {
-    const sdk = mockSdk();
-    sdk.usage.getUsageStats.mockResolvedValue({
-      data: {
+    mockClient.getUsageStats.mockResolvedValue(
+      {
         planName: 'Pro', billingPeriodStart: '2024-01-01', billingPeriodEnd: '2024-02-01',
         limits: { posts: 100, accounts: 5 },
         usage: { posts: 42, accounts: 3 },
       },
-    });
+    );
     const res = await h('get_usage_stats')({});
     const text = txt(res);
     expect(text).toContain('Plan: Pro');
@@ -803,10 +685,9 @@ describe('accounts.ts branch coverage', () => {
   });
 
   it('get_usage_stats: without limits and usage objects', async () => {
-    const sdk = mockSdk();
-    sdk.usage.getUsageStats.mockResolvedValue({
-      data: { plan: 'Free' },
-    });
+    mockClient.getUsageStats.mockResolvedValue(
+      { plan: 'Free' },
+    );
     const res = await h('get_usage_stats')({});
     const text = txt(res);
     expect(text).toContain('Plan: Free');
@@ -821,26 +702,22 @@ describe('accounts.ts branch coverage', () => {
 
 describe('validate.ts branch coverage', () => {
   it('validate_post: with mediaUrls', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePost.mockResolvedValue({ data: {} });
+    mockClient.validatePost.mockResolvedValue({});
     await h('validate_post')({ content: 'test', platforms: 'ig', mediaUrls: 'https://img.com/1.jpg, https://img.com/2.jpg' });
-    expect(sdk.validate.validatePost).toHaveBeenCalledWith({
-      body: {
-        content: 'test',
-        platforms: ['ig'],
-        mediaItems: [{ url: 'https://img.com/1.jpg' }, { url: 'https://img.com/2.jpg' }],
-      },
-    });
+    expect(mockClient.validatePost).toHaveBeenCalledWith(
+      'test',
+      ['ig'],
+      ['https://img.com/1.jpg', 'https://img.com/2.jpg'],
+    );
   });
 
   it('validate_post: with errors and warnings', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePost.mockResolvedValue({
-      data: {
+    mockClient.validatePost.mockResolvedValue(
+      {
         errors: [{ platform: 'x', message: 'Content too long' }],
         warnings: [{ message: 'No hashtags' }],
       },
-    });
+    );
     const res = await h('validate_post')({ content: 'test', platforms: 'x' });
     const text = txt(res);
     expect(text).toContain('Errors:');
@@ -851,30 +728,27 @@ describe('validate.ts branch coverage', () => {
   });
 
   it('validate_post: clean validation (no errors, no warnings)', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePost.mockResolvedValue({ data: {} });
+    mockClient.validatePost.mockResolvedValue({});
     const res = await h('validate_post')({ content: 'hello world', platforms: 'ig' });
     expect(txt(res)).toContain('✅ Post passed all validations.');
   });
 
   it('validate_post: content truncation for long content', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePost.mockResolvedValue({ data: {} });
+    mockClient.validatePost.mockResolvedValue({});
     const longContent = 'a'.repeat(100);
     const res = await h('validate_post')({ content: longContent, platforms: 'ig' });
     expect(txt(res)).toContain('…');
   });
 
   it('validate_post_length: result.platforms array format', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePostLength.mockResolvedValue({
-      data: {
+    mockClient.validatePostLength.mockResolvedValue(
+      {
         platforms: [
           { platform: 'x', withinLimit: false, length: 300, maxLength: 280 },
           { platform: 'ig', withinLimit: true, length: 300, maxLength: 2200 },
         ],
       },
-    });
+    );
     const res = await h('validate_post_length')({ content: 'a'.repeat(300), platforms: 'x,ig' });
     const text = txt(res);
     expect(text).toContain('❌ x: 300/280 chars');
@@ -882,13 +756,12 @@ describe('validate.ts branch coverage', () => {
   });
 
   it('validate_post_length: result as object with platform keys (non-array format)', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePostLength.mockResolvedValue({
-      data: {
+    mockClient.validatePostLength.mockResolvedValue(
+      {
         x: { withinLimit: false, length: 300, maxLength: 280 },
         ig: { withinLimit: true, length: 300, maxLength: 2200 },
       },
-    });
+    );
     const res = await h('validate_post_length')({ content: 'a'.repeat(300), platforms: 'x,ig' });
     const text = txt(res);
     expect(text).toContain('❌ x: 300/280');
@@ -896,26 +769,24 @@ describe('validate.ts branch coverage', () => {
   });
 
   it('validate_post_length: missing length/maxLength uses fallback', async () => {
-    const sdk = mockSdk();
-    sdk.validate.validatePostLength.mockResolvedValue({
-      data: {
+    mockClient.validatePostLength.mockResolvedValue(
+      {
         platforms: [{ platform: 'x', withinLimit: true }],
       },
-    });
+    );
     const res = await h('validate_post_length')({ content: 'test', platforms: 'x' });
     expect(txt(res)).toContain('✅ x: 4/? chars');
   });
 
   it('check_instagram_hashtags: results array (not hashtags)', async () => {
-    const sdk = mockSdk();
-    sdk.tools.checkInstagramHashtags.mockResolvedValue({
-      data: {
+    mockClient.checkInstagramHashtags.mockResolvedValue(
+      {
         results: [
           { name: 'travel', status: 'safe' },
           { name: 'fitness', status: 'restricted' },
         ],
       },
-    });
+    );
     const res = await h('check_instagram_hashtags')({ hashtags: '#travel,#fitness' });
     const text = txt(res);
     expect(text).toContain('✅ #travel — safe');
@@ -923,21 +794,19 @@ describe('validate.ts branch coverage', () => {
   });
 
   it('check_instagram_hashtags: banned status icon', async () => {
-    const sdk = mockSdk();
-    sdk.tools.checkInstagramHashtags.mockResolvedValue({
-      data: {
+    mockClient.checkInstagramHashtags.mockResolvedValue(
+      {
         hashtags: [{ hashtag: 'spam', status: 'banned' }],
       },
-    });
+    );
     const res = await h('check_instagram_hashtags')({ hashtags: 'spam' });
     expect(txt(res)).toContain('🚫 #spam — banned');
   });
 
   it('check_instagram_hashtags: JSON fallback when neither hashtags nor results', async () => {
-    const sdk = mockSdk();
-    sdk.tools.checkInstagramHashtags.mockResolvedValue({
-      data: { unexpected: 'format' },
-    });
+    mockClient.checkInstagramHashtags.mockResolvedValue(
+      { unexpected: 'format' },
+    );
     const res = await h('check_instagram_hashtags')({ hashtags: 'test' });
     expect(txt(res)).toContain('"unexpected"');
   });
@@ -949,17 +818,15 @@ describe('validate.ts branch coverage', () => {
 
 describe('webhooks.ts branch coverage', () => {
   it('list_webhooks: empty webhook list', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.getWebhookSettings.mockResolvedValue({ data: [] });
+    mockClient.listWebhooks.mockResolvedValue([]);
     const res = await h('list_webhooks')({});
     expect(txt(res)).toContain('No webhooks configured.');
   });
 
   it('list_webhooks: webhook with _id fallback, events as string, inactive', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.getWebhookSettings.mockResolvedValue({
-      data: [{ _id: 'wh1', name: 'My Hook', url: 'https://example.com', events: 'post.created', isActive: false }],
-    });
+    mockClient.listWebhooks.mockResolvedValue(
+      [{ _id: 'wh1', name: 'My Hook', url: 'https://example.com', events: 'post.created', isActive: false }],
+    );
     const res = await h('list_webhooks')({});
     const text = txt(res);
     expect(text).toContain('wh1');
@@ -969,10 +836,9 @@ describe('webhooks.ts branch coverage', () => {
   });
 
   it('list_webhooks: webhook with no name, no _id (uses id), events as array', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.getWebhookSettings.mockResolvedValue({
-      data: [{ id: 'wh2', url: 'https://x.com', events: ['post.created', 'post.updated'], isActive: true }],
-    });
+    mockClient.listWebhooks.mockResolvedValue(
+      [{ id: 'wh2', url: 'https://x.com', events: ['post.created', 'post.updated'], isActive: true }],
+    );
     const res = await h('list_webhooks')({});
     const text = txt(res);
     expect(text).toContain('Unnamed');
@@ -981,18 +847,16 @@ describe('webhooks.ts branch coverage', () => {
     expect(text).toContain('✅ Active');
   });
 
-  it('list_webhooks: non-array data returns empty', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.getWebhookSettings.mockResolvedValue({ data: 'not-an-array' });
+  it('list_webhooks: empty array returns no webhooks message', async () => {
+    mockClient.listWebhooks.mockResolvedValue([]);
     const res = await h('list_webhooks')({});
     expect(txt(res)).toContain('No webhooks configured.');
   });
 
   it('create_webhook: without name', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.createWebhookSettings.mockResolvedValue({
-      data: { _id: 'wh3' },
-    });
+    mockClient.createWebhook.mockResolvedValue(
+      { _id: 'wh3' },
+    );
     const res = await h('create_webhook')({ url: 'https://x.com/hook', events: 'post.created' });
     const text = txt(res);
     expect(text).toContain('wh3');
@@ -1000,24 +864,24 @@ describe('webhooks.ts branch coverage', () => {
   });
 
   it('create_webhook: with name', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.createWebhookSettings.mockResolvedValue({
-      data: { id: 'wh4', name: 'Test Hook' },
-    });
+    mockClient.createWebhook.mockResolvedValue(
+      { id: 'wh4', name: 'Test Hook' },
+    );
     const res = await h('create_webhook')({ url: 'https://x.com/hook', events: 'post.created,post.updated', name: 'Test Hook' });
     const text = txt(res);
     expect(text).toContain('Test Hook');
     expect(text).toContain('post.created, post.updated');
-    expect(sdk.webhooks.createWebhookSettings).toHaveBeenCalledWith({
-      body: { url: 'https://x.com/hook', events: ['post.created', 'post.updated'], name: 'Test Hook' },
-    });
+    expect(mockClient.createWebhook).toHaveBeenCalledWith(
+      'https://x.com/hook',
+      ['post.created', 'post.updated'],
+      'Test Hook',
+    );
   });
 
   it('update_webhook: with events string and optional fields', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.updateWebhookSettings.mockResolvedValue({
-      data: { name: 'Updated', url: 'https://new.com', isActive: true, events: ['a', 'b'] },
-    });
+    mockClient.updateWebhook.mockResolvedValue(
+      { name: 'Updated', url: 'https://new.com', isActive: true, events: ['a', 'b'] },
+    );
     const res = await h('update_webhook')({
       webhookId: 'wh1', url: 'https://new.com', events: 'a,b', name: 'Updated', isActive: true,
     });
@@ -1027,29 +891,26 @@ describe('webhooks.ts branch coverage', () => {
   });
 
   it('update_webhook: without events — events line omitted', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.updateWebhookSettings.mockResolvedValue({
-      data: { name: 'Renamed' },
-    });
+    mockClient.updateWebhook.mockResolvedValue(
+      { name: 'Renamed' },
+    );
     const res = await h('update_webhook')({ webhookId: 'wh1', name: 'Renamed' });
     expect(txt(res)).not.toContain('Events:');
   });
 
   it('update_webhook: events from original events string when webhook.events is not array', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.updateWebhookSettings.mockResolvedValue({
-      data: { events: 'not-an-array' },
-    });
+    mockClient.updateWebhook.mockResolvedValue(
+      { events: 'not-an-array' },
+    );
     const res = await h('update_webhook')({ webhookId: 'wh1', events: 'x,y' });
     const text = txt(res);
     expect(text).toContain('Events: x, y');
   });
 
   it('test_webhook: success=false shows failure', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.testWebhook.mockResolvedValue({
-      data: { success: false, statusCode: 500, message: 'Internal Error', error: 'connection refused' },
-    });
+    mockClient.testWebhook.mockResolvedValue(
+      { success: false, statusCode: 500, message: 'Internal Error', error: 'connection refused' },
+    );
     const res = await h('test_webhook')({ webhookId: 'wh1' });
     const text = txt(res);
     expect(text).toContain('❌ Webhook test failed.');
@@ -1059,17 +920,15 @@ describe('webhooks.ts branch coverage', () => {
   });
 
   it('test_webhook: success=true (explicit) shows success', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.testWebhook.mockResolvedValue({
-      data: { success: true, statusCode: 200 },
-    });
+    mockClient.testWebhook.mockResolvedValue(
+      { success: true, statusCode: 200 },
+    );
     const res = await h('test_webhook')({ webhookId: 'wh1' });
     expect(txt(res)).toContain('✅ Webhook test sent successfully!');
   });
 
   it('test_webhook: no success field defaults to success (success !== false)', async () => {
-    const sdk = mockSdk();
-    sdk.webhooks.testWebhook.mockResolvedValue({ data: {} });
+    mockClient.testWebhook.mockResolvedValue({});
     const res = await h('test_webhook')({ webhookId: 'wh1' });
     expect(txt(res)).toContain('✅ Webhook test sent successfully!');
   });
@@ -1081,10 +940,9 @@ describe('webhooks.ts branch coverage', () => {
 
 describe('queue.ts branch coverage', () => {
   it('list_queues: days and times as string instead of array', async () => {
-    const sdk = mockSdk();
-    sdk.queue.listQueueSlots.mockResolvedValue({
-      data: [{ name: 'Q1', id: 'q1', days: 'mon,tue,wed', times: '09:00,12:00' }],
-    });
+    mockClient.listQueues.mockResolvedValue(
+      [{ name: 'Q1', id: 'q1', days: 'mon,tue,wed', times: '09:00,12:00' }],
+    );
     const res = await h('list_queues')({ profileId: 'p1' });
     const text = txt(res);
     expect(text).toContain('Days:  mon,tue,wed');
@@ -1092,79 +950,70 @@ describe('queue.ts branch coverage', () => {
   });
 
   it('list_queues: queue without name or id', async () => {
-    const sdk = mockSdk();
-    sdk.queue.listQueueSlots.mockResolvedValue({
-      data: [{ isDefault: true, days: ['mon'], times: ['10:00'] }],
-    });
+    mockClient.listQueues.mockResolvedValue(
+      [{ isDefault: true, days: ['mon'], times: ['10:00'] }],
+    );
     const res = await h('list_queues')({ profileId: 'p1' });
     const text = txt(res);
     expect(text).toContain('(unnamed)');
     expect(text).toContain('⭐ Default queue');
   });
 
-  it('list_queues: result as object with data property', async () => {
-    const sdk = mockSdk();
-    sdk.queue.listQueueSlots.mockResolvedValue({
-      data: { data: [{ name: 'Q2', id: 'q2', days: ['fri'], times: ['15:00'] }] },
-    });
+  it('list_queues: result as array with nested data', async () => {
+    mockClient.listQueues.mockResolvedValue(
+      [{ name: 'Q2', id: 'q2', days: ['fri'], times: ['15:00'] }],
+    );
     const res = await h('list_queues')({ profileId: 'p1' });
     expect(txt(res)).toContain('Q2');
   });
 
   it('create_queue: non-Error exception uses string message', async () => {
-    const sdk = mockSdk();
-    sdk.queue.createQueueSlot.mockRejectedValue('unexpected');
+    mockClient.createQueue.mockRejectedValue('unexpected');
     const res = await h('create_queue')({ profileId: 'p1', days: 'mon', times: '09:00' });
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('Failed to create queue');
   });
 
   it('update_queue: with empty days after trim/filter returns error', async () => {
-    const sdk = mockSdk();
     const res = await h('update_queue')({ profileId: 'p1', days: ' , , ' });
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('Days list cannot be empty');
   });
 
   it('update_queue: with empty times after trim/filter returns error', async () => {
-    const sdk = mockSdk();
     const res = await h('update_queue')({ profileId: 'p1', times: ' , , ' });
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('Times list cannot be empty');
   });
 
   it('preview_queue_slots: slot with scheduledFor fallback', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({
-      data: [{ scheduledFor: '2024-01-01T10:00:00Z' }],
-    });
+    mockClient.previewQueueSlots.mockResolvedValue(
+      [{ scheduledFor: '2024-01-01T10:00:00Z' }],
+    );
     const res = await h('preview_queue_slots')({ profileId: 'p1' });
     expect(txt(res)).toContain('2024-01-01T10:00:00Z');
   });
 
   it('preview_queue_slots: slot with time fallback', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({
-      data: [{ time: '14:00' }],
-    });
+    mockClient.previewQueueSlots.mockResolvedValue(
+      [{ time: '14:00' }],
+    );
     const res = await h('preview_queue_slots')({ profileId: 'p1' });
     expect(txt(res)).toContain('14:00');
   });
 
   it('preview_queue_slots: slot with no known fields uses JSON.stringify', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({
-      data: [{ unknown: 'value' }],
-    });
+    mockClient.previewQueueSlots.mockResolvedValue(
+      [{ unknown: 'value' }],
+    );
     const res = await h('preview_queue_slots')({ profileId: 'p1' });
     expect(txt(res)).toContain('unknown');
   });
 
-  it('preview_queue_slots: result as object with data property', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({
-      data: { data: [{ datetime: '2024-06-01T09:00' }] },
-    });
+  it('preview_queue_slots: result as array with nested data', async () => {
+    mockClient.previewQueueSlots.mockResolvedValue(
+      [{ datetime: '2024-06-01T09:00' }],
+    );
     const res = await h('preview_queue_slots')({ profileId: 'p1' });
     expect(txt(res)).toContain('2024-06-01T09:00');
   });
@@ -1176,65 +1025,59 @@ describe('queue.ts branch coverage', () => {
 
 describe('scheduling.ts branch coverage', () => {
   it('find_next_slot: clipType-specific avoidDays override', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({ data: [] });
+    mockClient.listPosts.mockResolvedValue([]);
     const res = await h('find_next_slot')({ platform: 'x', clipType: 'short' });
     expect(res.isError).not.toBe(true);
     expect(txt(res)).toContain('Short Clip');
   });
 
-  it('find_next_slot: postList from data.data property', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: { data: [{ scheduledFor: '2099-06-15T09:00:00Z', content: 'future post' }] },
-    });
+  it('find_next_slot: postList from array response', async () => {
+    mockClient.listPosts.mockResolvedValue(
+      [{ scheduledFor: '2099-06-15T09:00:00Z', content: 'future post' }],
+    );
     const res = await h('find_next_slot')({ platform: 'x' });
     expect(res.isError).not.toBe(true);
   });
 
   it('view_calendar: post.platforms array mapped through toDisplayPlatform', async () => {
-    const sdk = mockSdk();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 1);
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [{
+    mockClient.listPosts.mockResolvedValue(
+      [{
         scheduledFor: futureDate.toISOString(),
         platforms: ['twitter', 'instagram'],
         content: 'multi-platform',
       }],
-    });
+    );
     const res = await h('view_calendar')({ days: 7 });
     const text = txt(res);
     expect(text).toContain('multi-platform');
   });
 
   it('view_calendar: post without platforms shows "unknown"', async () => {
-    const sdk = mockSdk();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 1);
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [{ scheduledFor: futureDate.toISOString(), content: 'no-plat' }],
-    });
+    mockClient.listPosts.mockResolvedValue(
+      [{ scheduledFor: futureDate.toISOString(), content: 'no-plat' }],
+    );
     const res = await h('view_calendar')({ days: 7 });
     expect(txt(res)).toContain('unknown');
   });
 
   it('view_calendar: post without scheduledFor is skipped', async () => {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [{ content: 'draft', platforms: ['ig'] }],
-    });
+    mockClient.listPosts.mockResolvedValue(
+      [{ content: 'draft', platforms: ['ig'] }],
+    );
     const res = await h('view_calendar')({ days: 7 });
     expect(txt(res)).toContain('No scheduled posts');
   });
 
   it('view_calendar: post without content shows (no content)', async () => {
-    const sdk = mockSdk();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 1);
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [{ scheduledFor: futureDate.toISOString(), platforms: ['ig'] }],
-    });
+    mockClient.listPosts.mockResolvedValue(
+      [{ scheduledFor: futureDate.toISOString(), platforms: ['ig'] }],
+    );
     const res = await h('view_calendar')({ days: 7 });
     expect(txt(res)).toContain('(no content)');
   });
@@ -1259,8 +1102,7 @@ describe('scheduling.ts branch coverage', () => {
   });
 
   it('schedule_post: non-Error exception', async () => {
-    const sdk = mockSdk();
-    sdk.posts.updatePost.mockRejectedValue(123);
+    mockClient.updatePost.mockRejectedValue(123);
     const res = await h('schedule_post')({ postId: 'p1', scheduledFor: '2024-01-01T10:00:00Z' });
     expect(res.isError).toBe(true);
     expect(txt(res)).toContain('Failed to schedule post');
@@ -1273,10 +1115,9 @@ describe('scheduling.ts branch coverage', () => {
 
 describe('optimizer.ts branch coverage', () => {
   it('getBestTimesToPost: uses times field fallback', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockResolvedValue({
-      data: { platform: 'ig', times: [{ dayOfWeek: 'mon', time: 9, score: 85 }] },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ platform: 'ig', times: [{ dayOfWeek: 'mon', time: 9, score: 85 }] }],
+    );
     const result = await getBestTimesToPost('ig');
     expect(result).toHaveLength(1);
     expect(result[0].bestTimes[0].day).toBe('mon');
@@ -1285,36 +1126,32 @@ describe('optimizer.ts branch coverage', () => {
   });
 
   it('getBestTimesToPost: uses data field fallback', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockResolvedValue({
-      data: { data: [{ day: 'tue', hour: 14, engagement: 70 }] },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ data: [{ day: 'tue', hour: 14, engagement: 70 }] }],
+    );
     const result = await getBestTimesToPost();
     expect(result[0].bestTimes[0].day).toBe('tue');
     expect(result[0].platform).toBe('all');
   });
 
   it('getBestTimesToPost: empty bestTimes/times/data returns empty array for times', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockResolvedValue({
-      data: { platform: 'x' },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ platform: 'x' }],
+    );
     const result = await getBestTimesToPost('x');
     expect(result[0].bestTimes).toEqual([]);
   });
 
   it('getBestTimesToPost: error returns empty array', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockRejectedValue(new Error('fail'));
+    mockClient.getAnalytics.mockRejectedValue(new Error('fail'));
     const result = await getBestTimesToPost();
     expect(result).toEqual([]);
   });
 
   it('getPostingFrequency: increase recommendation (optimal > current * 1.2)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: { current: 3, optimal: 7, correlation: 0.8, platform: 'ig' },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ current: 3, optimal: 7, correlation: 0.8, platform: 'ig' }],
+    );
     const result = await getPostingFrequency('ig');
     expect(result[0].recommendation).toContain('increasing');
     expect(result[0].recommendation).toContain('3');
@@ -1322,29 +1159,26 @@ describe('optimizer.ts branch coverage', () => {
   });
 
   it('getPostingFrequency: decrease recommendation (optimal < current * 0.8)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: { current: 10, optimal: 3, correlation: 0.5, platform: 'x' },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ current: 10, optimal: 3, correlation: 0.5, platform: 'x' }],
+    );
     const result = await getPostingFrequency('x');
     expect(result[0].recommendation).toContain('reducing');
   });
 
   it('getPostingFrequency: maintain recommendation (optimal ≈ current)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: { current: 5, optimal: 5, correlation: 0.9 },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ current: 5, optimal: 5, correlation: 0.9 }],
+    );
     const result = await getPostingFrequency();
     expect(result[0].recommendation).toContain('Maintain');
     expect(result[0].platform).toBe('all');
   });
 
   it('getPostingFrequency: uses recommended fallback for optimal', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: { currentFrequency: 5, recommended: 5, engagementCorrelation: 0.9 },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ currentFrequency: 5, recommended: 5, engagementCorrelation: 0.9 }],
+    );
     const result = await getPostingFrequency();
     expect(result[0].optimalFrequency).toBe(5);
     expect(result[0].currentFrequency).toBe(5);
@@ -1352,23 +1186,18 @@ describe('optimizer.ts branch coverage', () => {
   });
 
   it('getPostingFrequency: error returns empty array', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockRejectedValue(new Error('fail'));
+    mockClient.getAnalytics.mockRejectedValue(new Error('fail'));
     const result = await getPostingFrequency();
     expect(result).toEqual([]);
   });
 
-  it('getContentDecay: with postId — timeline from .timeline property', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: {
-        publishedAt: '2024-01-01T00:00:00Z',
-        timeline: [
-          { date: '2024-01-01T01:00:00Z', likes: 10, comments: 2, shares: 1, impressions: 100 },
-          { date: '2024-01-01T12:00:00Z', likes: 5, comments: 1, shares: 0, impressions: 50 },
-        ],
-      },
-    });
+  it('getContentDecay: with postId — timeline points array', async () => {
+    mockClient.getPostTimeline.mockResolvedValue(
+      [
+        { date: '2024-01-01T01:00:00Z', likes: 10, comments: 2, shares: 1, impressions: 100 },
+        { date: '2024-01-01T12:00:00Z', likes: 5, comments: 1, shares: 0, impressions: 50 },
+      ],
+    );
     const result = await getContentDecay('p1', 'ig');
     expect(result).toHaveLength(1);
     expect(result[0].postId).toBe('p1');
@@ -1377,71 +1206,62 @@ describe('optimizer.ts branch coverage', () => {
     expect(result[0].halfLifeHours).not.toBeNull();
   });
 
-  it('getContentDecay: with postId — timeline as array (no .timeline property)', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: [
+  it('getContentDecay: with postId — timestamp fallback for date field', async () => {
+    mockClient.getPostTimeline.mockResolvedValue(
+      [
         { timestamp: '2024-01-01T02:00:00Z', likes: 20, comments: 3, shares: 2, impressions: 200 },
       ],
-    });
+    );
     const result = await getContentDecay('p2');
     expect(result[0].totalEngagement).toBe(225);
     expect(result[0].platform).toBe('unknown');
   });
 
-  it('getContentDecay: with postId — no publishedAt uses Date.now()', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: { timeline: [{ date: new Date().toISOString(), likes: 1 }] },
-    });
+  it('getContentDecay: with postId — publishedAt defaults to empty string', async () => {
+    mockClient.getPostTimeline.mockResolvedValue(
+      [{ date: new Date().toISOString(), likes: 1 }],
+    );
     const result = await getContentDecay('p3');
     expect(result[0].publishedAt).toBe('');
   });
 
   it('getContentDecay: with postId — empty timeline returns 0 engagement', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({ data: {} });
+    mockClient.getPostTimeline.mockResolvedValue([]);
     const result = await getContentDecay('p4');
     expect(result[0].totalEngagement).toBe(0);
     expect(result[0].halfLifeHours).toBeNull();
   });
 
   it('getContentDecay: without postId — falls back to analytics list', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{ _id: 'post1' }, { postId: 'post2' }, { id: 'post3' }],
-    });
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: { publishedAt: '2024-01-01T00:00:00Z', timeline: [{ date: '2024-01-01T01:00:00Z', likes: 5 }] },
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ _id: 'post1' }, { postId: 'post2' }, { id: 'post3' }],
+    );
+    mockClient.getPostTimeline.mockResolvedValue(
+      [{ date: '2024-01-01T01:00:00Z', likes: 5 }],
+    );
     const result = await getContentDecay(undefined, 'ig');
     expect(result.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('getContentDecay: without postId — posts from .posts property', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: { posts: [{ _id: 'postA' }] },
-    });
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: { publishedAt: '2024-01-01T00:00:00Z', timeline: [] },
-    });
+  it('getContentDecay: without postId — empty timeline for each post', async () => {
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ _id: 'postA' }],
+    );
+    mockClient.getPostTimeline.mockResolvedValue([]);
     const result = await getContentDecay();
     expect(result.length).toBeGreaterThanOrEqual(0);
   });
 
   it('getContentDecay: without postId — post without id is skipped', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockResolvedValue({
-      data: [{ content: 'no id here' }],
-    });
+    mockClient.getAnalytics.mockResolvedValue(
+      [{ content: 'no id here' }],
+    );
     const result = await getContentDecay();
     expect(result).toEqual([]);
   });
 
   it('getContentDecay: error returns empty array', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getAnalytics.mockRejectedValue(new Error('fail'));
+    mockClient.getAnalytics.mockRejectedValue(new Error('fail'));
     const result = await getContentDecay();
     expect(result).toEqual([]);
   });
@@ -1452,16 +1272,8 @@ describe('optimizer.ts branch coverage', () => {
 // ════════════════════════════════════════════════════════════════════════════════
 
 describe('scheduler.ts branch coverage', () => {
-  function mockSchedulerSdk(posts: unknown[] = []) {
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: posts,
-    });
-    return sdk;
-  }
-
   it('findNextAvailableSlot: returns first available slot for x', async () => {
-    mockSchedulerSdk([]);
+    setupSchedulerPosts([]);
     const result = await findNextAvailableSlot('x');
     expect(result).not.toBeNull();
     expect(result!.slot).toContain('T');
@@ -1469,7 +1281,7 @@ describe('scheduler.ts branch coverage', () => {
   });
 
   it('findNextAvailableSlot: with clipType short', async () => {
-    mockSchedulerSdk([]);
+    setupSchedulerPosts([]);
     const result = await findNextAvailableSlot('x', 'short');
     expect(result).not.toBeNull();
     expect(result!.label).toBe('Short Clip');
@@ -1482,7 +1294,7 @@ describe('scheduler.ts branch coverage', () => {
   });
 
   it('findNextAvailableSlot: returns null for unknown platform with no slots', async () => {
-    mockSchedulerSdk([]);
+    setupSchedulerPosts([]);
     const result = await findNextAvailableSlot('unknown-platform');
     expect(result).toBeNull();
   });
@@ -1501,7 +1313,7 @@ describe('scheduler.ts branch coverage', () => {
         status: 'scheduled',
       });
     }
-    mockSchedulerSdk(futureSlots);
+    setupSchedulerPosts(futureSlots);
     const result = await findNextAvailableSlot('x');
     expect(result).not.toBeNull();
   });
@@ -1511,7 +1323,7 @@ describe('scheduler.ts branch coverage', () => {
     futureDate.setDate(futureDate.getDate() + 2);
     const isoDate = futureDate.toISOString();
 
-    mockSchedulerSdk([
+    setupSchedulerPosts([
       { _id: 'p1', scheduledFor: isoDate, platforms: [{ platform: 'twitter' }], content: 'Post A', status: 'scheduled' },
       { _id: 'p2', scheduledFor: isoDate, platforms: [{ platform: 'twitter' }], content: 'Post B', status: 'scheduled' },
     ]);
@@ -1526,7 +1338,7 @@ describe('scheduler.ts branch coverage', () => {
     nextSat.setDate(nextSat.getDate() + daysUntilSat);
     nextSat.setHours(9, 0, 0, 0);
 
-    mockSchedulerSdk([
+    setupSchedulerPosts([
       { _id: 'sat-post', scheduledFor: nextSat.toISOString(), platforms: [{ platform: 'twitter' }], content: 'Saturday post', status: 'scheduled' },
     ]);
     const report = await detectConflicts('x');
@@ -1535,13 +1347,13 @@ describe('scheduler.ts branch coverage', () => {
 
   it('autoResolveConflicts: returns empty when no config', async () => {
     vi.mocked(loadScheduleConfig).mockReturnValueOnce(null);
-    mockSchedulerSdk([]);
+    setupSchedulerPosts([]);
     const result = await autoResolveConflicts();
     expect(result).toEqual({ plan: [], executed: false });
   });
 
   it('autoResolveConflicts: returns empty when no conflicts', async () => {
-    mockSchedulerSdk([]);
+    setupSchedulerPosts([]);
     const result = await autoResolveConflicts();
     expect(result.plan).toEqual([]);
     expect(result.executed).toBe(false);

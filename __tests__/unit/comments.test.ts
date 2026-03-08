@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
+  toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
+mockClient = createMockClient();
+
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 await import('../../src/tools/engagement/comments.js');
 
@@ -31,23 +34,6 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    comments: {
-      listInboxComments: vi.fn().mockResolvedValue({ data: [] }),
-      getInboxPostComments: vi.fn().mockResolvedValue({ data: [] }),
-      replyToInboxPost: vi.fn().mockResolvedValue({ data: {} }),
-      deleteInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      hideInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      likeInboxComment: vi.fn().mockResolvedValue({ data: {} }),
-      sendPrivateReplyToComment: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 describe('comments tools registration', () => {
   it('registers all seven comment tools', () => {
     const names = vi.mocked(server.tool).mock.calls.map((c) => c[0]);
@@ -62,11 +48,12 @@ describe('comments tools registration', () => {
 });
 
 describe('list_commented_posts', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted list of commented posts', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listCommentedPosts.mockResolvedValue([
       { postId: 'p1', platform: 'instagram', content: 'Check this out', commentCount: 5 },
     ]);
 
@@ -80,8 +67,7 @@ describe('list_commented_posts', () => {
   });
 
   it('returns empty message when no posts', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listCommentedPosts.mockResolvedValue([]);
 
     const handler = getToolHandler('list_commented_posts');
     const result = await handler({});
@@ -90,8 +76,7 @@ describe('list_commented_posts', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Server error'); });
+    mockClient.listCommentedPosts.mockRejectedValue(new Error('Server error'));
 
     const handler = getToolHandler('list_commented_posts');
     const result = await handler({});
@@ -102,11 +87,12 @@ describe('list_commented_posts', () => {
 });
 
 describe('get_post_comments', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted comments', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getPostComments.mockResolvedValue([
       { id: 'cm1', authorName: 'Alice', message: 'Great post!', createdAt: '2024-06-01', likes: 3, replyCount: 1 },
       { id: 'cm2', authorName: 'Bob', message: 'Nice!', createdAt: '2024-06-02', likes: 0 },
     ]);
@@ -122,8 +108,7 @@ describe('get_post_comments', () => {
   });
 
   it('returns empty when no comments', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getPostComments.mockResolvedValue([]);
 
     const handler = getToolHandler('get_post_comments');
     const result = await handler({ postId: 'p1' });
@@ -133,11 +118,12 @@ describe('get_post_comments', () => {
 });
 
 describe('reply_to_comment', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('sends reply and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'reply-1' });
+    mockClient.replyToComment.mockResolvedValue({ id: 'reply-1' });
 
     const handler = getToolHandler('reply_to_comment');
     const result = await handler({
@@ -153,11 +139,12 @@ describe('reply_to_comment', () => {
 });
 
 describe('delete_comment', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('deletes comment and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
+    mockClient.deleteComment.mockResolvedValue(undefined);
 
     const handler = getToolHandler('delete_comment');
     const result = await handler({ commentId: 'cm1', accountId: 'a1' });
@@ -168,8 +155,7 @@ describe('delete_comment', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Not found'); });
+    mockClient.deleteComment.mockRejectedValue(new Error('Not found'));
 
     const handler = getToolHandler('delete_comment');
     const result = await handler({ commentId: 'bad', accountId: 'a1' });
@@ -180,11 +166,12 @@ describe('delete_comment', () => {
 });
 
 describe('hide_comment', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('hides comment and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
+    mockClient.hideComment.mockResolvedValue(undefined);
 
     const handler = getToolHandler('hide_comment');
     const result = await handler({ commentId: 'cm1', accountId: 'a1' });
@@ -196,11 +183,12 @@ describe('hide_comment', () => {
 });
 
 describe('like_comment', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('likes comment and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
+    mockClient.likeComment.mockResolvedValue(undefined);
 
     const handler = getToolHandler('like_comment');
     const result = await handler({ commentId: 'cm1', accountId: 'a1' });
@@ -212,11 +200,12 @@ describe('like_comment', () => {
 });
 
 describe('send_private_reply', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('sends private reply and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'pr-1' });
+    mockClient.sendPrivateReply.mockResolvedValue({ id: 'pr-1' });
 
     const handler = getToolHandler('send_private_reply');
     const result = await handler({ commentId: 'cm1', accountId: 'a1', message: 'DM reply' });
@@ -228,8 +217,7 @@ describe('send_private_reply', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Forbidden'); });
+    mockClient.sendPrivateReply.mockRejectedValue(new Error('Forbidden'));
 
     const handler = getToolHandler('send_private_reply');
     const result = await handler({ commentId: 'cm1', accountId: 'a1', message: 'test' });

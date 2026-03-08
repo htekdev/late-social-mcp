@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
+  toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
+mockClient = createMockClient();
+
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 await import('../../src/tools/engagement/reviews.js');
 
@@ -31,19 +34,6 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    reviews: {
-      listInboxReviews: vi.fn().mockResolvedValue({ data: [] }),
-      replyToInboxReview: vi.fn().mockResolvedValue({ data: {} }),
-      deleteInboxReviewReply: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 describe('reviews tools registration', () => {
   it('registers all three review tools', () => {
     const names = vi.mocked(server.tool).mock.calls.map((c) => c[0]);
@@ -54,11 +44,12 @@ describe('reviews tools registration', () => {
 });
 
 describe('list_reviews', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('returns formatted review list with star ratings', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listReviews.mockResolvedValue([
       { id: 'r1', platform: 'google-business', authorName: 'Jane', rating: 4, message: 'Great service!', createdAt: '2024-06-01' },
       { id: 'r2', platform: 'facebook', authorName: 'John', rating: 2, message: 'Could be better', reply: 'Thanks for the feedback', createdAt: '2024-06-02' },
     ]);
@@ -78,8 +69,7 @@ describe('list_reviews', () => {
   });
 
   it('returns empty message when no reviews', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listReviews.mockResolvedValue([]);
 
     const handler = getToolHandler('list_reviews');
     const result = await handler({});
@@ -88,8 +78,7 @@ describe('list_reviews', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('API error'); });
+    mockClient.listReviews.mockRejectedValue(new Error('API error'));
 
     const handler = getToolHandler('list_reviews');
     const result = await handler({});
@@ -100,11 +89,12 @@ describe('list_reviews', () => {
 });
 
 describe('reply_to_review', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('sends reply and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ id: 'reply-1' });
+    mockClient.replyToReview.mockResolvedValue({ id: 'reply-1' });
 
     const handler = getToolHandler('reply_to_review');
     const result = await handler({ reviewId: 'r1', accountId: 'a1', message: 'Thank you!' });
@@ -117,8 +107,7 @@ describe('reply_to_review', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Review not found'); });
+    mockClient.replyToReview.mockRejectedValue(new Error('Review not found'));
 
     const handler = getToolHandler('reply_to_review');
     const result = await handler({ reviewId: 'bad', accountId: 'a1', message: 'test' });
@@ -129,11 +118,12 @@ describe('reply_to_review', () => {
 });
 
 describe('delete_review_reply', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    mockClient = createMockClient();
+  });
 
   it('deletes review reply and confirms', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
+    mockClient.deleteReviewReply.mockResolvedValue(undefined);
 
     const handler = getToolHandler('delete_review_reply');
     const result = await handler({ reviewReplyId: 'rr1', accountId: 'a1' });
@@ -144,8 +134,7 @@ describe('delete_review_reply', () => {
   });
 
   it('returns error on failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Permission denied'); });
+    mockClient.deleteReviewReply.mockRejectedValue(new Error('Permission denied'));
 
     const handler = getToolHandler('delete_review_reply');
     const result = await handler({ reviewReplyId: 'bad', accountId: 'a1' });

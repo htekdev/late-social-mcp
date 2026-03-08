@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap, toApiPlatform, toDisplayPlatform } from '../client/lateClient.js';
+import { getClient, toApiPlatform, toDisplayPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { loadScheduleConfig, getSlotsForPlatform, normalizePlatform } from '../config/scheduleConfig.js';
 import { z } from 'zod';
@@ -51,12 +51,7 @@ server.tool(
   },
   async ({ postId, scheduledFor }) => {
     try {
-      unwrap(
-        await getClient().sdk.posts.updatePost({
-          path: { postId },
-          body: { scheduledFor },
-        }),
-      );
+      await getClient().updatePost(postId, { scheduledFor });
       return textResponse(`✅ Post ${postId} scheduled for ${scheduledFor}`);
     } catch (err: unknown) {
       return errorResponse(err instanceof Error ? err.message : 'Failed to schedule post');
@@ -98,15 +93,11 @@ server.tool(
 
       // Fetch existing scheduled posts to check for conflicts
       const apiPlatform = toApiPlatform(normalized);
-      const scheduledResult = await getClient().sdk.posts.listPosts({
-        query: { status: 'scheduled', platform: apiPlatform, limit: 100 },
+      const postList = await getClient().listPosts({
+        status: 'scheduled',
+        platform: apiPlatform,
+        limit: 100,
       });
-      const scheduledPosts = unwrap(scheduledResult);
-      const postList: Array<{ scheduledFor?: string | null; content?: string }> = Array.isArray(
-        scheduledPosts,
-      )
-        ? scheduledPosts
-        : ((scheduledPosts as Record<string, unknown>)?.data as typeof postList) ?? [];
 
       // Build set of booked time keys ("YYYY-MM-DDTHH:MM") in config timezone
       const bookedTimes = new Set<string>();
@@ -222,17 +213,7 @@ server.tool(
     try {
       const lookAhead = days ?? 7;
 
-      const result = await getClient().sdk.posts.listPosts({
-        query: { status: 'scheduled', limit: 200 },
-      });
-      const allPosts = unwrap(result);
-      const postList: Array<{
-        scheduledFor?: string | null;
-        content?: string;
-        platforms?: string[];
-      }> = Array.isArray(allPosts)
-        ? allPosts
-        : ((allPosts as Record<string, unknown>)?.data as typeof postList) ?? [];
+      const postList = await getClient().listPosts({ status: 'scheduled', limit: 200 });
 
       const config = loadScheduleConfig();
       const timezone = config?.timezone ?? 'UTC';
@@ -257,7 +238,7 @@ server.tool(
         const timeStr = localStr.substring(11, 16);
 
         const platforms = Array.isArray(post.platforms)
-          ? post.platforms.map((p: string) => toDisplayPlatform(p)).join(', ')
+          ? post.platforms.map((p) => typeof p === 'string' ? toDisplayPlatform(p) : toDisplayPlatform(p.platform)).join(', ')
           : 'unknown';
 
         const content = (post.content ?? '').substring(0, 80);

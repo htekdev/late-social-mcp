@@ -1,4 +1,4 @@
-import { getClient, unwrap, toApiPlatform } from '../client/lateClient.js';
+import { getClient, toApiPlatform } from '../client/lateClient.js';
 import { loadScheduleConfig, normalizePlatform } from '../config/scheduleConfig.js';
 import { generateSlots, getDayOfWeekInTimezone, buildSlotDatetime } from './scheduler.js';
 
@@ -46,29 +46,23 @@ async function fetchAllPosts(
   statuses: readonly string[],
   platform?: string,
 ): Promise<FetchedPost[]> {
-  const late = getClient().sdk;
+  const client = getClient();
   const allPosts: FetchedPost[] = [];
   const apiPlatform = platform ? toApiPlatform(platform) : undefined;
 
   for (const status of statuses) {
-    const result = await late.posts.listPosts({
-      query: { status, platform: apiPlatform, limit: 200 },
-    });
-    const data = unwrap(result);
-    const posts = Array.isArray(data) ? data : (data as Record<string, unknown>).posts as unknown[] ?? [];
+    const posts = await client.listPosts({ status, platform: apiPlatform, limit: 200 });
 
     for (const p of posts) {
-      const post = p as Record<string, unknown>;
-      const platformsRaw = post.platforms as unknown[];
-      const platforms = platformsRaw?.map((pl: unknown) =>
-        typeof pl === 'string' ? pl : (pl as Record<string, unknown>)?.platform as string ?? '',
+      const platforms = p.platforms?.map((pl) =>
+        typeof pl === 'string' ? pl : pl?.platform ?? '',
       ) ?? [];
 
       allPosts.push({
-        id: (post._id ?? post.id) as string,
-        content: (post.content ?? '') as string,
-        scheduledFor: (post.scheduledFor as string) ?? null,
-        status: (post.status ?? '') as string,
+        id: p._id,
+        content: p.content ?? '',
+        scheduledFor: p.scheduledFor ?? null,
+        status: p.status ?? '',
         platforms,
       });
     }
@@ -196,7 +190,7 @@ export async function buildRealignPlan(options: {
 }
 
 export async function executeRealignPlan(plan: RealignPlan): Promise<RealignResult> {
-  const late = getClient().sdk;
+  const client = getClient();
   let updated = 0;
   let cancelled = 0;
   let failed = 0;
@@ -204,10 +198,7 @@ export async function executeRealignPlan(plan: RealignPlan): Promise<RealignResu
 
   for (const entry of plan.toCancel) {
     try {
-      await late.posts.updatePost({
-        path: { postId: entry.postId },
-        body: { status: 'cancelled' } as Record<string, unknown>,
-      });
+      await client.updatePost(entry.postId, { status: 'cancelled' });
       cancelled++;
       await new Promise(r => setTimeout(r, 300));
     } catch (err) {
@@ -219,10 +210,7 @@ export async function executeRealignPlan(plan: RealignPlan): Promise<RealignResu
 
   for (const entry of plan.posts) {
     try {
-      await late.posts.updatePost({
-        path: { postId: entry.postId },
-        body: { scheduledFor: entry.newScheduledFor, isDraft: false } as Record<string, unknown>,
-      });
+      await client.updatePost(entry.postId, { scheduledFor: entry.newScheduledFor, isDraft: false });
       updated++;
       await new Promise(r => setTimeout(r, 300));
     } catch (err) {

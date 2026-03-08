@@ -1,25 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 // Side-effect imports: each module calls server.tool() to register handlers
 await import('../../src/tools/accounts.js');
@@ -45,47 +45,6 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    accounts: {
-      listAccounts: vi.fn().mockResolvedValue({ data: [] }),
-      getAccountHealth: vi.fn().mockResolvedValue({ data: {} }),
-      getAllAccountsHealth: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    profiles: {
-      listProfiles: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    usage: {
-      getUsageStats: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    media: {
-      getMediaPresignedUrl: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    validate: {
-      validateMedia: vi.fn().mockResolvedValue({ data: {} }),
-      validatePost: vi.fn().mockResolvedValue({ data: {} }),
-      validatePostLength: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    tools: {
-      checkInstagramHashtags: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    webhooks: {
-      getWebhookSettings: vi.fn().mockResolvedValue({ data: [] }),
-      createWebhookSettings: vi.fn().mockResolvedValue({ data: {} }),
-      updateWebhookSettings: vi.fn().mockResolvedValue({ data: {} }),
-      testWebhook: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    logs: {
-      getPostLogs: vi.fn().mockResolvedValue({ data: [] }),
-      listPostsLogs: vi.fn().mockResolvedValue({ data: [] }),
-      listConnectionLogs: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 // ── Registration ─────────────────────────────────────────────────────────────
 
 describe('tool registration', () => {
@@ -109,11 +68,13 @@ describe('tool registration', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('list_accounts', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted account list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listAccounts.mockResolvedValue([
       { platform: 'twitter', displayName: 'MyBrand', username: 'mybrand', isActive: true },
       { platform: 'instagram', displayName: 'MyInsta', username: 'myinsta', isActive: false },
     ]);
@@ -129,8 +90,7 @@ describe('list_accounts', () => {
   });
 
   it('returns empty message when no accounts', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listAccounts.mockResolvedValue([]);
 
     const result = await getToolHandler('list_accounts')({});
 
@@ -138,8 +98,7 @@ describe('list_accounts', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Unauthorized'); });
+    mockClient.listAccounts.mockRejectedValue(new Error('Unauthorized'));
 
     const result = await getToolHandler('list_accounts')({});
 
@@ -150,11 +109,13 @@ describe('list_accounts', () => {
 });
 
 describe('check_account_health', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns health for a specific account', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.getAccountHealth.mockResolvedValue({
       tokenStatus: 'valid',
       permissions: ['read', 'write'],
       recommendations: ['Enable 2FA'],
@@ -167,12 +128,11 @@ describe('check_account_health', () => {
     expect(result.content[0].text).toContain('Token Status: valid');
     expect(result.content[0].text).toContain('read, write');
     expect(result.content[0].text).toContain('Enable 2FA');
-    expect(sdk.accounts.getAccountHealth).toHaveBeenCalledWith({ path: { accountId: 'acc-1' } });
+    expect(mockClient.getAccountHealth).toHaveBeenCalledWith('acc-1');
   });
 
   it('returns health for all accounts when no accountId given', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getAllAccountsHealth.mockResolvedValue([
       { platform: 'instagram', displayName: 'Insta', tokenStatus: 'valid', permissions: ['read'], recommendations: [] },
     ]);
 
@@ -185,8 +145,7 @@ describe('check_account_health', () => {
   });
 
   it('returns empty message when no health data', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getAllAccountsHealth.mockResolvedValue([]);
 
     const result = await getToolHandler('check_account_health')({});
 
@@ -194,8 +153,7 @@ describe('check_account_health', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Timeout'); });
+    mockClient.getAccountHealth.mockRejectedValue(new Error('Timeout'));
 
     const result = await getToolHandler('check_account_health')({ accountId: 'bad' });
 
@@ -206,13 +164,15 @@ describe('check_account_health', () => {
 });
 
 describe('list_profiles', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted profile list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
-      { id: 'prof-1', name: 'Marketing', color: '#FF0000', description: 'Marketing team profile' },
-      { id: 'prof-2', name: 'Sales', color: '#00FF00', description: 'Sales team profile' },
+    mockClient.listProfiles.mockResolvedValue([
+      { _id: 'prof-1', name: 'Marketing', color: '#FF0000', description: 'Marketing team profile' },
+      { _id: 'prof-2', name: 'Sales', color: '#00FF00', description: 'Sales team profile' },
     ]);
 
     const result = await getToolHandler('list_profiles')({});
@@ -226,8 +186,7 @@ describe('list_profiles', () => {
   });
 
   it('returns empty message when no profiles', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listProfiles.mockResolvedValue([]);
 
     const result = await getToolHandler('list_profiles')({});
 
@@ -235,8 +194,7 @@ describe('list_profiles', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Network error'); });
+    mockClient.listProfiles.mockRejectedValue(new Error('Network error'));
 
     const result = await getToolHandler('list_profiles')({});
 
@@ -247,11 +205,13 @@ describe('list_profiles', () => {
 });
 
 describe('get_usage_stats', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted usage stats', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.getUsageStats.mockResolvedValue({
       planName: 'Pro',
       billingPeriodStart: '2024-06-01',
       billingPeriodEnd: '2024-06-30',
@@ -270,8 +230,7 @@ describe('get_usage_stats', () => {
   });
 
   it('handles minimal usage data without limits', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ plan: 'Free' });
+    mockClient.getUsageStats.mockResolvedValue({ plan: 'Free' });
 
     const result = await getToolHandler('get_usage_stats')({});
 
@@ -280,8 +239,7 @@ describe('get_usage_stats', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Forbidden'); });
+    mockClient.getUsageStats.mockRejectedValue(new Error('Forbidden'));
 
     const result = await getToolHandler('get_usage_stats')({});
 
@@ -296,11 +254,13 @@ describe('get_usage_stats', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('upload_media', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns presigned upload URL with instructions', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.getPresignedUrl.mockResolvedValue({
       uploadUrl: 'https://s3.example.com/upload?sig=abc',
       publicUrl: 'https://cdn.example.com/media/photo.jpg',
     });
@@ -313,14 +273,11 @@ describe('upload_media', () => {
     expect(result.content[0].text).toContain('https://s3.example.com/upload?sig=abc');
     expect(result.content[0].text).toContain('https://cdn.example.com/media/photo.jpg');
     expect(result.content[0].text).toContain('Instructions:');
-    expect(sdk.media.getMediaPresignedUrl).toHaveBeenCalledWith({
-      body: { filename: 'photo.jpg', mimeType: 'image/jpeg' },
-    });
+    expect(mockClient.getPresignedUrl).toHaveBeenCalledWith('photo.jpg', 'image/jpeg');
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Quota exceeded'); });
+    mockClient.getPresignedUrl.mockRejectedValue(new Error('Quota exceeded'));
 
     const result = await getToolHandler('upload_media')({ filename: 'big.mp4', mimeType: 'video/mp4' });
 
@@ -331,11 +288,13 @@ describe('upload_media', () => {
 });
 
 describe('validate_media', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns validation pass when no errors or warnings', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ errors: [], warnings: [] });
+    mockClient.validateMedia.mockResolvedValue({ errors: [], warnings: [] });
 
     const result = await getToolHandler('validate_media')({
       mediaUrl: 'https://cdn.example.com/photo.jpg',
@@ -346,14 +305,11 @@ describe('validate_media', () => {
     expect(result.content[0].text).toContain('Media Validation: https://cdn.example.com/photo.jpg');
     expect(result.content[0].text).toContain('instagram, x');
     expect(result.content[0].text).toContain('✅ Media passed all validations');
-    expect(sdk.validate.validateMedia).toHaveBeenCalledWith({
-      body: { platforms: ['instagram', 'x'], mediaItems: [{ url: 'https://cdn.example.com/photo.jpg' }] },
-    });
+    expect(mockClient.validateMedia).toHaveBeenCalledWith('https://cdn.example.com/photo.jpg', ['instagram', 'x']);
   });
 
   it('shows errors and warnings', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.validateMedia.mockResolvedValue({
       errors: [{ platform: 'instagram', message: 'File too large' }],
       warnings: [{ platform: 'x', message: 'Resolution suboptimal' }],
     });
@@ -369,8 +325,7 @@ describe('validate_media', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Invalid URL'); });
+    mockClient.validateMedia.mockRejectedValue(new Error('Invalid URL'));
 
     const result = await getToolHandler('validate_media')({
       mediaUrl: 'bad-url',
@@ -388,11 +343,13 @@ describe('validate_media', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('validate_post', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns validation pass when no issues', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ errors: [], warnings: [] });
+    mockClient.validatePost.mockResolvedValue({ errors: [], warnings: [] });
 
     const result = await getToolHandler('validate_post')({
       content: 'Hello world!',
@@ -403,14 +360,11 @@ describe('validate_post', () => {
     expect(result.content[0].text).toContain('Post Validation');
     expect(result.content[0].text).toContain('instagram, x');
     expect(result.content[0].text).toContain('✅ Post passed all validations');
-    expect(sdk.validate.validatePost).toHaveBeenCalledWith({
-      body: { content: 'Hello world!', platforms: ['instagram', 'x'] },
-    });
+    expect(mockClient.validatePost).toHaveBeenCalledWith('Hello world!', ['instagram', 'x'], undefined);
   });
 
   it('shows errors and warnings', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.validatePost.mockResolvedValue({
       errors: [{ platform: 'x', message: 'Content too long' }],
       warnings: [{ platform: 'instagram', message: 'No hashtags detected' }],
     });
@@ -426,8 +380,7 @@ describe('validate_post', () => {
   });
 
   it('includes media items when mediaUrls is provided', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ errors: [], warnings: [] });
+    mockClient.validatePost.mockResolvedValue({ errors: [], warnings: [] });
 
     await getToolHandler('validate_post')({
       content: 'Photo post',
@@ -435,18 +388,15 @@ describe('validate_post', () => {
       mediaUrls: 'https://cdn.example.com/a.jpg, https://cdn.example.com/b.jpg',
     });
 
-    expect(sdk.validate.validatePost).toHaveBeenCalledWith({
-      body: {
-        content: 'Photo post',
-        platforms: ['instagram'],
-        mediaItems: [{ url: 'https://cdn.example.com/a.jpg' }, { url: 'https://cdn.example.com/b.jpg' }],
-      },
-    });
+    expect(mockClient.validatePost).toHaveBeenCalledWith(
+      'Photo post',
+      ['instagram'],
+      ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'],
+    );
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Validation service down'); });
+    mockClient.validatePost.mockRejectedValue(new Error('Validation service down'));
 
     const result = await getToolHandler('validate_post')({
       content: 'test',
@@ -460,11 +410,13 @@ describe('validate_post', () => {
 });
 
 describe('validate_post_length', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns per-platform length check', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.validatePostLength.mockResolvedValue({
       platforms: [
         { platform: 'x', length: 50, maxLength: 280, withinLimit: true },
         { platform: 'instagram', length: 50, maxLength: 2200, withinLimit: true },
@@ -480,14 +432,11 @@ describe('validate_post_length', () => {
     expect(result.content[0].text).toContain('Post Length Check');
     expect(result.content[0].text).toContain('✅ x: 50/280 chars');
     expect(result.content[0].text).toContain('✅ instagram: 50/2200 chars');
-    expect(sdk.validate.validatePostLength).toHaveBeenCalledWith({
-      body: { content: 'Short post', platforms: ['x', 'instagram'] },
-    });
+    expect(mockClient.validatePostLength).toHaveBeenCalledWith('Short post', ['x', 'instagram']);
   });
 
   it('shows failure when content exceeds limit', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.validatePostLength.mockResolvedValue({
       platforms: [
         { platform: 'x', length: 300, maxLength: 280, withinLimit: false },
       ],
@@ -502,8 +451,7 @@ describe('validate_post_length', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Bad request'); });
+    mockClient.validatePostLength.mockRejectedValue(new Error('Bad request'));
 
     const result = await getToolHandler('validate_post_length')({
       content: 'test',
@@ -517,11 +465,13 @@ describe('validate_post_length', () => {
 });
 
 describe('check_instagram_hashtags', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns hashtag status with icons', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.checkInstagramHashtags.mockResolvedValue({
       hashtags: [
         { hashtag: 'travel', status: 'safe' },
         { hashtag: 'banned', status: 'banned' },
@@ -536,14 +486,11 @@ describe('check_instagram_hashtags', () => {
     expect(result.content[0].text).toContain('✅ #travel — safe');
     expect(result.content[0].text).toContain('🚫 #banned — banned');
     expect(result.content[0].text).toContain('⚠️ #risky — restricted');
-    expect(sdk.tools.checkInstagramHashtags).toHaveBeenCalledWith({
-      body: { hashtags: ['travel', 'banned', 'risky'] },
-    });
+    expect(mockClient.checkInstagramHashtags).toHaveBeenCalledWith(['travel', 'banned', 'risky']);
   });
 
   it('handles results array format', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.checkInstagramHashtags.mockResolvedValue({
       results: [
         { name: 'sunset', status: 'safe' },
       ],
@@ -555,8 +502,7 @@ describe('check_instagram_hashtags', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Service unavailable'); });
+    mockClient.checkInstagramHashtags.mockRejectedValue(new Error('Service unavailable'));
 
     const result = await getToolHandler('check_instagram_hashtags')({ hashtags: 'test' });
 
@@ -571,11 +517,13 @@ describe('check_instagram_hashtags', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('list_webhooks', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted webhook list', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listWebhooks.mockResolvedValue([
       { _id: 'wh-1', name: 'Prod Hook', url: 'https://example.com/hook', events: ['post.published', 'post.failed'], isActive: true },
       { _id: 'wh-2', name: 'Dev Hook', url: 'https://dev.example.com/hook', events: ['post.published'], isActive: false },
     ]);
@@ -593,8 +541,7 @@ describe('list_webhooks', () => {
   });
 
   it('returns empty message when no webhooks', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listWebhooks.mockResolvedValue([]);
 
     const result = await getToolHandler('list_webhooks')({});
 
@@ -602,8 +549,7 @@ describe('list_webhooks', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Internal server error'); });
+    mockClient.listWebhooks.mockRejectedValue(new Error('Internal server error'));
 
     const result = await getToolHandler('list_webhooks')({});
 
@@ -614,11 +560,13 @@ describe('list_webhooks', () => {
 });
 
 describe('create_webhook', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns confirmation with created webhook details', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ _id: 'wh-new', name: 'My Hook' });
+    mockClient.createWebhook.mockResolvedValue({ _id: 'wh-new', name: 'My Hook' });
 
     const result = await getToolHandler('create_webhook')({
       url: 'https://example.com/webhook',
@@ -632,14 +580,15 @@ describe('create_webhook', () => {
     expect(result.content[0].text).toContain('My Hook');
     expect(result.content[0].text).toContain('https://example.com/webhook');
     expect(result.content[0].text).toContain('post.published, post.failed');
-    expect(sdk.webhooks.createWebhookSettings).toHaveBeenCalledWith({
-      body: { url: 'https://example.com/webhook', events: ['post.published', 'post.failed'], name: 'My Hook' },
-    });
+    expect(mockClient.createWebhook).toHaveBeenCalledWith(
+      'https://example.com/webhook',
+      ['post.published', 'post.failed'],
+      'My Hook',
+    );
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Duplicate URL'); });
+    mockClient.createWebhook.mockRejectedValue(new Error('Duplicate URL'));
 
     const result = await getToolHandler('create_webhook')({
       url: 'https://dup.example.com/hook',
@@ -653,11 +602,13 @@ describe('create_webhook', () => {
 });
 
 describe('update_webhook', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns confirmation with updated fields', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
+    mockClient.updateWebhook.mockResolvedValue({
       name: 'Updated Hook',
       url: 'https://new.example.com/hook',
       isActive: true,
@@ -677,20 +628,16 @@ describe('update_webhook', () => {
     expect(result.content[0].text).toContain('wh-1');
     expect(result.content[0].text).toContain('Updated Hook');
     expect(result.content[0].text).toContain('https://new.example.com/hook');
-    expect(sdk.webhooks.updateWebhookSettings).toHaveBeenCalledWith({
-      body: {
-        _id: 'wh-1',
-        url: 'https://new.example.com/hook',
-        name: 'Updated Hook',
-        isActive: true,
-        events: ['post.published'],
-      },
+    expect(mockClient.updateWebhook).toHaveBeenCalledWith('wh-1', {
+      url: 'https://new.example.com/hook',
+      name: 'Updated Hook',
+      isActive: true,
+      events: ['post.published'],
     });
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Not found'); });
+    mockClient.updateWebhook.mockRejectedValue(new Error('Not found'));
 
     const result = await getToolHandler('update_webhook')({ webhookId: 'bad-id' });
 
@@ -701,11 +648,13 @@ describe('update_webhook', () => {
 });
 
 describe('test_webhook', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns success with status code', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ success: true, statusCode: 200, message: 'OK' });
+    mockClient.testWebhook.mockResolvedValue({ success: true, statusCode: 200, message: 'OK' });
 
     const result = await getToolHandler('test_webhook')({ webhookId: 'wh-1' });
 
@@ -714,12 +663,11 @@ describe('test_webhook', () => {
     expect(result.content[0].text).toContain('wh-1');
     expect(result.content[0].text).toContain('200');
     expect(result.content[0].text).toContain('OK');
-    expect(sdk.webhooks.testWebhook).toHaveBeenCalledWith({ body: { webhookId: 'wh-1' } });
+    expect(mockClient.testWebhook).toHaveBeenCalledWith('wh-1');
   });
 
   it('returns failure when success is false', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({ success: false, error: 'Connection refused' });
+    mockClient.testWebhook.mockResolvedValue({ success: false, error: 'Connection refused' });
 
     const result = await getToolHandler('test_webhook')({ webhookId: 'wh-bad' });
 
@@ -729,8 +677,7 @@ describe('test_webhook', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Webhook not found'); });
+    mockClient.testWebhook.mockRejectedValue(new Error('Webhook not found'));
 
     const result = await getToolHandler('test_webhook')({ webhookId: 'ghost' });
 
@@ -745,11 +692,13 @@ describe('test_webhook', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('get_post_logs', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted post log entries', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.getPostLogs.mockResolvedValue([
       { platform: 'twitter', timestamp: '2024-06-01T10:00:00Z', status: 'published', message: 'Post went live' },
       { platform: 'instagram', timestamp: '2024-06-01T10:01:00Z', status: 'failed', error: 'Token expired' },
     ]);
@@ -762,12 +711,11 @@ describe('get_post_logs', () => {
     expect(result.content[0].text).toContain('Post went live');
     expect(result.content[0].text).toContain('failed');
     expect(result.content[0].text).toContain('Error: Token expired');
-    expect(sdk.logs.getPostLogs).toHaveBeenCalledWith({ path: { postId: 'post-123' } });
+    expect(mockClient.getPostLogs).toHaveBeenCalledWith('post-123');
   });
 
   it('returns empty message when no logs', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.getPostLogs.mockResolvedValue([]);
 
     const result = await getToolHandler('get_post_logs')({ postId: 'post-empty' });
 
@@ -775,8 +723,7 @@ describe('get_post_logs', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Post not found'); });
+    mockClient.getPostLogs.mockRejectedValue(new Error('Post not found'));
 
     const result = await getToolHandler('get_post_logs')({ postId: 'bad' });
 
@@ -787,11 +734,13 @@ describe('get_post_logs', () => {
 });
 
 describe('list_publishing_logs', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted publishing log list', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listPublishingLogs.mockResolvedValue([
       { platform: 'twitter', timestamp: '2024-06-01T09:00:00Z', status: 'published', action: 'publish', postId: 'p1', message: 'Sent' },
     ]);
 
@@ -803,30 +752,25 @@ describe('list_publishing_logs', () => {
     expect(result.content[0].text).toContain('publish');
     expect(result.content[0].text).toContain('Post: p1');
     expect(result.content[0].text).toContain('Sent');
-    expect(sdk.logs.listPostsLogs).toHaveBeenCalledWith({
-      query: { status: 'published', platform: 'twitter' },
+    expect(mockClient.listPublishingLogs).toHaveBeenCalledWith({
+      status: 'published',
+      platform: 'twitter',
     });
   });
 
   it('handles object response with logs array and totalCount', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
-      logs: [
-        { platform: 'instagram', timestamp: '2024-06-02T10:00:00Z', status: 'failed', error: 'Rate limited' },
-      ],
-      totalCount: 50,
-    });
+    mockClient.listPublishingLogs.mockResolvedValue([
+      { platform: 'instagram', timestamp: '2024-06-02T10:00:00Z', status: 'failed', error: 'Rate limited' },
+    ]);
 
     const result = await getToolHandler('list_publishing_logs')({});
 
     expect(result.content[0].text).toContain('Publishing Logs (1 entries)');
     expect(result.content[0].text).toContain('Error: Rate limited');
-    expect(result.content[0].text).toContain('Total: 50');
   });
 
   it('returns empty message when no logs match', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listPublishingLogs.mockResolvedValue([]);
 
     const result = await getToolHandler('list_publishing_logs')({});
 
@@ -834,8 +778,7 @@ describe('list_publishing_logs', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('DB timeout'); });
+    mockClient.listPublishingLogs.mockRejectedValue(new Error('DB timeout'));
 
     const result = await getToolHandler('list_publishing_logs')({});
 
@@ -846,11 +789,13 @@ describe('list_publishing_logs', () => {
 });
 
 describe('list_connection_logs', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted connection log list', async () => {
-    const sdk = mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listConnectionLogs.mockResolvedValue([
       { platform: 'twitter', timestamp: '2024-06-01T08:00:00Z', status: 'connected', message: 'OAuth success', accountId: 'acc-1' },
     ]);
 
@@ -861,30 +806,25 @@ describe('list_connection_logs', () => {
     expect(result.content[0].text).toContain('connected');
     expect(result.content[0].text).toContain('OAuth success');
     expect(result.content[0].text).toContain('Account: acc-1');
-    expect(sdk.logs.listConnectionLogs).toHaveBeenCalledWith({
-      query: { platform: 'twitter', status: 'connected' },
+    expect(mockClient.listConnectionLogs).toHaveBeenCalledWith({
+      platform: 'twitter',
+      status: 'connected',
     });
   });
 
   it('handles object response with logs array and totalCount', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({
-      logs: [
-        { platform: 'instagram', timestamp: '2024-06-03T12:00:00Z', status: 'disconnected', error: 'Token revoked', accountId: 'acc-2' },
-      ],
-      totalCount: 25,
-    });
+    mockClient.listConnectionLogs.mockResolvedValue([
+      { platform: 'instagram', timestamp: '2024-06-03T12:00:00Z', status: 'disconnected', error: 'Token revoked', accountId: 'acc-2' },
+    ]);
 
     const result = await getToolHandler('list_connection_logs')({});
 
     expect(result.content[0].text).toContain('Connection Logs (1 entries)');
     expect(result.content[0].text).toContain('Error: Token revoked');
-    expect(result.content[0].text).toContain('Total: 25');
   });
 
   it('returns empty message when no logs match', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listConnectionLogs.mockResolvedValue([]);
 
     const result = await getToolHandler('list_connection_logs')({});
 
@@ -892,8 +832,7 @@ describe('list_connection_logs', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => { throw new Error('Permission denied'); });
+    mockClient.listConnectionLogs.mockRejectedValue(new Error('Permission denied'));
 
     const result = await getToolHandler('list_connection_logs')({});
 

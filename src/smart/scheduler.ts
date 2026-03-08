@@ -1,6 +1,6 @@
 import type { DayOfWeek } from '../types/schedule.js';
 import { loadScheduleConfig, getSlotsForPlatform, normalizePlatform } from '../config/scheduleConfig.js';
-import { getClient, unwrap, toApiPlatform } from '../client/lateClient.js';
+import { getClient, toApiPlatform } from '../client/lateClient.js';
 
 const CHUNK_DAYS = 14;
 const MAX_LOOKAHEAD_DAYS = 730;
@@ -58,13 +58,9 @@ interface ScheduledPost {
 }
 
 async function fetchScheduledPosts(platform?: string): Promise<ScheduledPost[]> {
-  const late = getClient().sdk;
+  const client = getClient();
   const apiPlatform = platform ? toApiPlatform(platform) : undefined;
-  const result = await late.posts.listPosts({
-    query: { status: 'scheduled', platform: apiPlatform, limit: 200 },
-  });
-  const data = unwrap(result);
-  const posts = Array.isArray(data) ? data : (data as Record<string, unknown>).posts as unknown[] ?? [];
+  const posts = await client.listPosts({ status: 'scheduled', platform: apiPlatform, limit: 200 });
   return posts.map((p: unknown) => {
     const post = p as Record<string, unknown>;
     const platforms = post.platforms as unknown[];
@@ -352,12 +348,9 @@ export async function autoResolveConflicts(
   }
 
   if (execute && plan.length > 0) {
-    const late = getClient().sdk;
+    const client = getClient();
     for (const move of plan) {
-      await late.posts.updatePost({
-        path: { postId: move.postId },
-        body: { scheduledFor: move.to } as Record<string, unknown>,
-      });
+      await client.updatePost(move.postId, { scheduledFor: move.to });
       await new Promise(r => setTimeout(r, 300));
     }
     return { plan, executed: true };

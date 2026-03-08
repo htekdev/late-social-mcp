@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
 
 // ── Mocks ──
 
+let mockClient: MockLateApiClient;
+
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((r: unknown) => (r as Record<string, unknown>)?.data ?? r),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 vi.mock('../../src/config/scheduleConfig.js', () => ({
@@ -51,7 +55,6 @@ vi.mock('../../src/config/scheduleConfig.js', () => ({
   validateScheduleConfig: vi.fn(() => []),
 }));
 
-import { getClient } from '../../src/client/lateClient.js';
 import { loadScheduleConfig } from '../../src/config/scheduleConfig.js';
 import {
   generateSlots,
@@ -81,27 +84,14 @@ function getNextWeekday(dow: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'su
   return result;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    posts: {
-      listPosts: vi.fn().mockResolvedValue({ data: [] }),
-      updatePost: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    analytics: {
-      getBestTimeToPost: vi.fn().mockResolvedValue({ data: [] }),
-      getPostingFrequency: vi.fn().mockResolvedValue({ data: [] }),
-      getPostTimeline: vi.fn().mockResolvedValue({ data: [] }),
-      getAnalytics: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 // ── buildSlotDatetime ──
 
 describe('buildSlotDatetime', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
+
   it('produces a valid ISO 8601 datetime with offset', () => {
     const date = new Date('2025-06-16T12:00:00Z'); // A Monday
     const result = buildSlotDatetime(date, '09:00', 'America/Chicago');
@@ -137,6 +127,11 @@ describe('buildSlotDatetime', () => {
 // ── getDayOfWeekInTimezone ──
 
 describe('getDayOfWeekInTimezone', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
+
   it('returns correct day for a known date', () => {
     // 2025-06-16 is a Monday
     const date = new Date('2025-06-16T12:00:00Z');
@@ -183,7 +178,10 @@ describe('getDayOfWeekInTimezone', () => {
 // ── generateSlots ──
 
 describe('generateSlots', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('generates the requested number of slots', () => {
     const bookedMs = new Set<number>();
@@ -267,17 +265,17 @@ describe('generateSlots', () => {
 // ── detectConflicts ──
 
 describe('detectConflicts', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('detects duplicate time slot conflicts', async () => {
-    const sdk = mockSdk();
     const scheduledFor = '2025-06-16T14:00:00Z';
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [
-        { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
-        { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-      ],
-    });
+    mockClient.listPosts.mockResolvedValue([
+      { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
+      { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
+    ]);
 
     const report = await detectConflicts('x');
 
@@ -289,12 +287,9 @@ describe('detectConflicts', () => {
     const saturday = getNextWeekday('sat');
     const saturdayIso = saturday.toISOString();
 
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [
-        { _id: 'p1', scheduledFor: saturdayIso, platforms: ['twitter'], content: 'Weekend post', status: 'scheduled' },
-      ],
-    });
+    mockClient.listPosts.mockResolvedValue([
+      { _id: 'p1', scheduledFor: saturdayIso, platforms: ['twitter'], content: 'Weekend post', status: 'scheduled' },
+    ]);
 
     const report = await detectConflicts('x');
 
@@ -304,8 +299,6 @@ describe('detectConflicts', () => {
   });
 
   it('returns empty report when no posts exist', async () => {
-    mockSdk();
-
     const report = await detectConflicts();
 
     expect(report.conflicts).toEqual([]);
@@ -316,12 +309,9 @@ describe('detectConflicts', () => {
     const monday = getNextWeekday('mon');
     monday.setUTCHours(3, 30, 0, 0); // 03:30 UTC → 22:30 CDT previous day or unusual time
 
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [
-        { _id: 'p1', scheduledFor: monday.toISOString(), platforms: ['twitter'], content: 'Odd time', status: 'scheduled' },
-      ],
-    });
+    mockClient.listPosts.mockResolvedValue([
+      { _id: 'p1', scheduledFor: monday.toISOString(), platforms: ['twitter'], content: 'Odd time', status: 'scheduled' },
+    ]);
 
     const report = await detectConflicts('x');
 
@@ -333,11 +323,12 @@ describe('detectConflicts', () => {
 // ── autoResolveConflicts ──
 
 describe('autoResolveConflicts', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns empty plan when no conflicts', async () => {
-    mockSdk();
-
     const result = await autoResolveConflicts('x', false);
 
     expect(result.plan).toEqual([]);
@@ -345,7 +336,6 @@ describe('autoResolveConflicts', () => {
   });
 
   it('returns empty plan when config is missing', async () => {
-    mockSdk();
     vi.mocked(loadScheduleConfig).mockReturnValueOnce(null);
 
     const result = await autoResolveConflicts('x', false);
@@ -356,13 +346,10 @@ describe('autoResolveConflicts', () => {
 
   it('creates a resolve plan for duplicate-time conflicts', async () => {
     const scheduledFor = '2025-06-16T14:00:00Z';
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [
-        { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
-        { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-      ],
-    });
+    mockClient.listPosts.mockResolvedValue([
+      { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
+      { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
+    ]);
 
     const result = await autoResolveConflicts('x', false);
 
@@ -378,39 +365,38 @@ describe('autoResolveConflicts', () => {
 
   it('executes moves when execute=true', async () => {
     const scheduledFor = '2025-06-16T14:00:00Z';
-    const sdk = mockSdk();
-    sdk.posts.listPosts.mockResolvedValue({
-      data: [
-        { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
-        { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-      ],
-    });
-    sdk.posts.updatePost.mockResolvedValue({ data: {} });
+    mockClient.listPosts.mockResolvedValue([
+      { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
+      { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
+    ]);
+    mockClient.updatePost.mockResolvedValue({});
 
     const result = await autoResolveConflicts('x', true);
 
     expect(result.plan.length).toBeGreaterThanOrEqual(1);
     expect(result.executed).toBe(true);
-    expect(sdk.posts.updatePost).toHaveBeenCalled();
+    expect(mockClient.updatePost).toHaveBeenCalled();
   });
 });
 
 // ── getBestTimesToPost ──
 
 describe('getBestTimesToPost', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns best times from analytics API', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockResolvedValue({
-      data: {
+    mockClient.getAnalytics.mockResolvedValue([
+      {
         platform: 'instagram',
         bestTimes: [
           { day: 'Monday', hour: 10, engagement: 95 },
           { day: 'Wednesday', hour: 14, engagement: 88 },
         ],
       },
-    });
+    ]);
 
     const results = await getBestTimesToPost('instagram');
 
@@ -421,16 +407,13 @@ describe('getBestTimesToPost', () => {
   });
 
   it('returns empty array when API returns no data', async () => {
-    mockSdk();
-
     const results = await getBestTimesToPost('x');
 
     expect(results).toEqual([]);
   });
 
   it('returns empty array on API failure', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getBestTimeToPost.mockRejectedValue(new Error('Timeout'));
+    mockClient.getAnalytics.mockRejectedValue(new Error('Timeout'));
 
     const results = await getBestTimesToPost('x');
 
@@ -441,18 +424,20 @@ describe('getBestTimesToPost', () => {
 // ── getPostingFrequency ──
 
 describe('getPostingFrequency', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns frequency analysis with recommendation', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: {
+    mockClient.getAnalytics.mockResolvedValue([
+      {
         platform: 'x',
         currentFrequency: 3,
         optimalFrequency: 7,
         engagementCorrelation: 0.85,
       },
-    });
+    ]);
 
     const results = await getPostingFrequency('x');
 
@@ -463,15 +448,14 @@ describe('getPostingFrequency', () => {
   });
 
   it('recommends maintaining frequency when current matches optimal', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: {
+    mockClient.getAnalytics.mockResolvedValue([
+      {
         platform: 'instagram',
         currentFrequency: 5,
         optimalFrequency: 5,
         engagementCorrelation: 0.9,
       },
-    });
+    ]);
 
     const results = await getPostingFrequency('instagram');
 
@@ -479,15 +463,14 @@ describe('getPostingFrequency', () => {
   });
 
   it('recommends reducing when current is too high', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockResolvedValue({
-      data: {
+    mockClient.getAnalytics.mockResolvedValue([
+      {
         platform: 'x',
         currentFrequency: 14,
         optimalFrequency: 5,
         engagementCorrelation: 0.6,
       },
-    });
+    ]);
 
     const results = await getPostingFrequency('x');
 
@@ -495,8 +478,7 @@ describe('getPostingFrequency', () => {
   });
 
   it('returns empty array on API failure', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostingFrequency.mockRejectedValue(new Error('Auth error'));
+    mockClient.getAnalytics.mockRejectedValue(new Error('Auth error'));
 
     const results = await getPostingFrequency('x');
 
@@ -507,20 +489,17 @@ describe('getPostingFrequency', () => {
 // ── getContentDecay ──
 
 describe('getContentDecay', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns decay analysis for a specific post', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: {
-        publishedAt: '2025-06-10T09:00:00Z',
-        timeline: [
-          { date: '2025-06-10T10:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
-          { date: '2025-06-10T14:00:00Z', likes: 80, comments: 20, shares: 10, impressions: 400 },
-          { date: '2025-06-11T09:00:00Z', likes: 30, comments: 5, shares: 2, impressions: 100 },
-        ],
-      },
-    });
+    mockClient.getPostTimeline.mockResolvedValue([
+      { date: '2025-06-10T10:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
+      { date: '2025-06-10T14:00:00Z', likes: 80, comments: 20, shares: 10, impressions: 400 },
+      { date: '2025-06-11T09:00:00Z', likes: 30, comments: 5, shares: 2, impressions: 100 },
+    ]);
 
     const results = await getContentDecay('post123', 'instagram');
 
@@ -531,16 +510,10 @@ describe('getContentDecay', () => {
   });
 
   it('calculates half-life when enough data exists', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: {
-        publishedAt: '2025-06-10T09:00:00Z',
-        timeline: [
-          { date: '2025-06-10T10:00:00Z', likes: 100, comments: 50, shares: 25, impressions: 500 },
-          { date: '2025-06-10T15:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
-        ],
-      },
-    });
+    mockClient.getPostTimeline.mockResolvedValue([
+      { date: '2025-06-10T10:00:00Z', likes: 100, comments: 50, shares: 25, impressions: 500 },
+      { date: '2025-06-10T15:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
+    ]);
 
     const results = await getContentDecay('post456', 'x');
 
@@ -550,8 +523,7 @@ describe('getContentDecay', () => {
   });
 
   it('returns result with empty timeline on API error', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockRejectedValue(new Error('Not found'));
+    mockClient.getPostTimeline.mockRejectedValue(new Error('Not found'));
 
     const results = await getContentDecay('bad-post', 'x');
 
@@ -559,16 +531,10 @@ describe('getContentDecay', () => {
   });
 
   it('computes cumulative engagement percentages', async () => {
-    const sdk = mockSdk();
-    sdk.analytics.getPostTimeline.mockResolvedValue({
-      data: {
-        publishedAt: '2025-06-10T09:00:00Z',
-        timeline: [
-          { date: '2025-06-10T10:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
-          { date: '2025-06-10T12:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
-        ],
-      },
-    });
+    mockClient.getPostTimeline.mockResolvedValue([
+      { date: '2025-06-10T10:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
+      { date: '2025-06-10T12:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
+    ]);
 
     const results = await getContentDecay('post789', 'instagram');
 

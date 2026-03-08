@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap } from '../client/lateClient.js';
+import { getClient } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -9,11 +9,8 @@ server.tool(
   { filename: z.string(), mimeType: z.string() },
   async ({ filename, mimeType }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.media.getMediaPresignedUrl({ body: { filename, mimeType } }),
-      );
-      const result = data as Record<string, unknown>;
+      const client = getClient();
+      const result = await client.getPresignedUrl(filename, mimeType);
 
       const lines = [
         `Media Upload Ready: ${filename}`,
@@ -44,30 +41,24 @@ server.tool(
   { mediaUrl: z.string(), platforms: z.string().describe('Comma-separated platform names') },
   async ({ mediaUrl, platforms }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const platformList = platforms.split(',').map((p) => p.trim()).filter(Boolean);
-      const mediaItems = [{ url: mediaUrl }];
 
-      const data = unwrap(
-        await late.validate.validateMedia({ body: { platforms: platformList, mediaItems } }),
-      );
-      const result = data as Record<string, unknown>;
+      const result = await client.validateMedia(mediaUrl, platformList);
 
       const lines = [`Media Validation: ${mediaUrl}`, `Platforms: ${platformList.join(', ')}`];
 
       if (Array.isArray(result.errors) && result.errors.length > 0) {
         lines.push('', 'Errors:');
         for (const e of result.errors) {
-          const err = e as Record<string, unknown>;
-          lines.push(`  ❌ [${err.platform ?? 'general'}] ${err.message ?? JSON.stringify(err)}`);
+          lines.push(`  ❌ [${e.platform ?? 'general'}] ${e.message ?? JSON.stringify(e)}`);
         }
       }
 
       if (Array.isArray(result.warnings) && result.warnings.length > 0) {
         lines.push('', 'Warnings:');
         for (const w of result.warnings) {
-          const warn = w as Record<string, unknown>;
-          lines.push(`  ⚠️ [${warn.platform ?? 'general'}] ${warn.message ?? JSON.stringify(warn)}`);
+          lines.push(`  ⚠️ [${w.platform ?? 'general'}] ${w.message ?? JSON.stringify(w)}`);
         }
       }
 

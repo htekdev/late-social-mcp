@@ -2,7 +2,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { server } from '../mcpServer.js';
-import { getClient, unwrap } from '../client/lateClient.js';
+import { getClient } from '../client/lateClient.js';
 import { getLateApiKey, loadConfig, saveConfig, CONFIG_FILE } from '../config/config.js';
 import { validateScheduleConfig } from '../config/scheduleConfig.js';
 import { textResponse, errorResponse } from '../types/tools.js';
@@ -23,16 +23,13 @@ server.tool(
         );
       }
 
-      const late = getClient().sdk;
-      const profiles = unwrap(await late.profiles.listProfiles());
-      const accounts = unwrap(await late.accounts.listAccounts());
+      const client = getClient();
+      const profileList = await client.listProfiles();
+      const accountList = await client.listAccounts();
 
       const config = loadConfig();
       config.lateApiKey = apiKey;
       saveConfig(config);
-
-      const profileList = Array.isArray(profiles) ? profiles : [];
-      const accountList = Array.isArray(accounts) ? accounts : [];
 
       const lines: string[] = [
         '✅ Late API connection successful!',
@@ -70,20 +67,13 @@ server.tool(
         );
       }
 
-      const late = getClient().sdk;
+      const client = getClient();
 
-      const [profilesResult, accountsResult, usageResult] = await Promise.all([
-        late.profiles.listProfiles(),
-        late.accounts.listAccounts(),
-        late.usage.getUsageStats(),
+      const [profileList, accountList, usage] = await Promise.all([
+        client.listProfiles(),
+        client.listAccounts(),
+        client.getUsageStats(),
       ]);
-
-      const profiles = unwrap(profilesResult);
-      const accounts = unwrap(accountsResult);
-      const usage = unwrap(usageResult);
-
-      const profileList = Array.isArray(profiles) ? profiles : [];
-      const accountList = Array.isArray(accounts) ? accounts : [];
 
       const lines: string[] = [
         '📊 Late Social MCP Status',

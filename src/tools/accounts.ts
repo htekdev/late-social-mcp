@@ -1,5 +1,5 @@
 import { server } from '../mcpServer.js';
-import { getClient, unwrap, toDisplayPlatform } from '../client/lateClient.js';
+import { getClient, toDisplayPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';
 
@@ -9,19 +9,18 @@ server.tool(
   { platform: z.string().optional(), profileId: z.string().optional() },
   async ({ platform, profileId }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
       const query: Record<string, string> = {};
       if (platform) query.platform = platform;
       if (profileId) query.profileId = profileId;
 
-      const data = unwrap(await late.accounts.listAccounts({ query }));
-      const accounts = Array.isArray(data) ? data : [];
+      const accounts = await client.listAccounts(query);
 
       if (accounts.length === 0) {
         return textResponse('No connected accounts found.');
       }
 
-      const lines = accounts.map((a: Record<string, unknown>, i: number) => {
+      const lines = accounts.map((a, i) => {
         const plat = toDisplayPlatform(String(a.platform ?? ''));
         const display = a.displayName ?? 'N/A';
         const user = a.username ?? 'N/A';
@@ -42,11 +41,10 @@ server.tool(
   { accountId: z.string().optional() },
   async ({ accountId }) => {
     try {
-      const late = getClient().sdk;
+      const client = getClient();
 
       if (accountId) {
-        const data = unwrap(await late.accounts.getAccountHealth({ path: { accountId } }));
-        const health = data as Record<string, unknown>;
+        const health = await client.getAccountHealth(accountId);
         const lines = [
           `Account Health: ${accountId}`,
           `Token Status: ${health.tokenStatus ?? 'unknown'}`,
@@ -61,14 +59,13 @@ server.tool(
         return textResponse(lines.join('\n'));
       }
 
-      const data = unwrap(await late.accounts.getAllAccountsHealth({}));
-      const healthList = Array.isArray(data) ? data : [];
+      const healthList = await client.getAllAccountsHealth();
 
       if (healthList.length === 0) {
         return textResponse('No account health data available.');
       }
 
-      const sections = healthList.map((h: Record<string, unknown>, i: number) => {
+      const sections = healthList.map((h, i) => {
         const plat = toDisplayPlatform(String(h.platform ?? ''));
         const section = [
           `${i + 1}. [${plat}] ${h.displayName ?? h.accountId ?? 'Unknown'}`,
@@ -94,16 +91,15 @@ server.tool(
   {},
   async () => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(await late.profiles.listProfiles());
-      const profiles = Array.isArray(data) ? data : [];
+      const client = getClient();
+      const profiles = await client.listProfiles();
 
       if (profiles.length === 0) {
         return textResponse('No profiles found.');
       }
 
-      const lines = profiles.map((p: Record<string, unknown>, i: number) =>
-        `${i + 1}. ${p.name ?? 'Unnamed'} (${p.id})\n   Color: ${p.color ?? 'N/A'}\n   Description: ${p.description ?? 'N/A'}`,
+      const lines = profiles.map((p, i) =>
+        `${i + 1}. ${p.name ?? 'Unnamed'} (${p._id})\n   Color: ${p.color ?? 'N/A'}\n   Description: ${p.description ?? 'N/A'}`,
       );
 
       return textResponse(`Profiles (${profiles.length}):\n${lines.join('\n\n')}`);
@@ -119,9 +115,8 @@ server.tool(
   {},
   async () => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(await late.usage.getUsageStats());
-      const usage = data as Record<string, unknown>;
+      const client = getClient();
+      const usage = await client.getUsageStats() as Record<string, unknown>;
 
       const lines = [
         `Plan: ${usage.planName ?? usage.plan ?? 'N/A'}`,

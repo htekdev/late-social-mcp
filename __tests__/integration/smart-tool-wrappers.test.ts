@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 // ---------------------------------------------------------------------------
 // Mock ALL dependencies BEFORE any imports that touch them
@@ -40,10 +43,11 @@ vi.mock('../../src/config/scheduleConfig.js', () => ({
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((r: unknown) => (r as Record<string, unknown>)?.data ?? r),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => p),
   toDisplayPlatform: vi.fn((p: string) => p),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,7 @@ const toolHandlers = new Map<string, ToolHandler>();
 beforeEach(() => {
   vi.clearAllMocks();
   toolHandlers.clear();
+  mockClient = createMockClient();
 
   vi.mocked(server.tool).mockImplementation(
     (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {

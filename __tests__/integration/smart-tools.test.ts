@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 // ── Mocks ──
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((r: unknown) => (r as Record<string, unknown>)?.data ?? r),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 vi.mock('../../src/config/scheduleConfig.js', () => ({
@@ -22,7 +26,6 @@ vi.mock('../../src/smart/scheduler.js', () => ({
   buildSlotDatetime: vi.fn(),
 }));
 
-import { getClient } from '../../src/client/lateClient.js';
 import { loadScheduleConfig, getSlotsForPlatform } from '../../src/config/scheduleConfig.js';
 import { generateSlots } from '../../src/smart/scheduler.js';
 import {
@@ -78,24 +81,6 @@ function setupConfig(config: unknown = DEFAULT_CONFIG) {
   );
 }
 
-function makeSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    posts: {
-      listPosts: vi.fn().mockResolvedValue({ data: [] }),
-      updatePost: vi.fn().mockResolvedValue({ data: {} }),
-    },
-    analytics: {
-      getBestTimeToPost: vi.fn().mockResolvedValue({ data: [] }),
-      getPostingFrequency: vi.fn().mockResolvedValue({ data: [] }),
-      getPostTimeline: vi.fn().mockResolvedValue({ data: [] }),
-      getAnalytics: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 function makePost(id: string, platform: string, content: string, scheduledFor: string | null = null, status = 'scheduled') {
   return {
     _id: id,
@@ -111,6 +96,7 @@ function makePost(id: string, platform: string, content: string, scheduledFor: s
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockClient = createMockClient();
 });
 
 // =====================================================
@@ -119,7 +105,6 @@ beforeEach(() => {
 describe('buildRealignPlan', () => {
   it('returns empty plan when no schedule config is loaded', async () => {
     vi.mocked(loadScheduleConfig).mockReturnValue(null);
-    makeSdk();
 
     const plan = await buildRealignPlan();
 
@@ -128,7 +113,6 @@ describe('buildRealignPlan', () => {
 
   it('returns empty plan when API returns no posts', async () => {
     setupConfig();
-    makeSdk();
 
     const plan = await buildRealignPlan();
 
@@ -139,21 +123,19 @@ describe('buildRealignPlan', () => {
 
   it('fetches posts across all four statuses', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     await buildRealignPlan();
 
     // Should call listPosts once per status: scheduled, draft, cancelled, failed
-    expect(sdk.posts.listPosts).toHaveBeenCalledTimes(4);
-    const statuses = sdk.posts.listPosts.mock.calls.map(
-      (c: unknown[]) => (c[0] as Record<string, Record<string, unknown>>).query.status,
+    expect(mockClient.listPosts).toHaveBeenCalledTimes(4);
+    const statuses = mockClient.listPosts.mock.calls.map(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).status,
     );
     expect(statuses).toEqual(['scheduled', 'draft', 'cancelled', 'failed']);
   });
 
   it('groups posts by platform and inferred clip type', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot1 = '2025-07-01T09:00:00-05:00';
     const slot2 = '2025-07-02T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot1, slot2]);
@@ -162,9 +144,9 @@ describe('buildRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'Hello world', '2025-06-15T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Another tweet', '2025-06-16T10:00:00Z');
 
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -175,14 +157,13 @@ describe('buildRealignPlan', () => {
 
   it('infers short clip type for content < 280 chars', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     const post = makePost('p1', 'x', 'Short post');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -193,15 +174,14 @@ describe('buildRealignPlan', () => {
 
   it('infers medium-clip type for content between 280 and 1000 chars', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     const mediumContent = 'A'.repeat(500);
     const post = makePost('p1', 'x', mediumContent);
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -212,15 +192,14 @@ describe('buildRealignPlan', () => {
 
   it('infers video clip type for content >= 1000 chars', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     const longContent = 'B'.repeat(1200);
     const post = makePost('p1', 'x', longContent);
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -231,14 +210,13 @@ describe('buildRealignPlan', () => {
 
   it('uses explicit clipType when provided instead of inferring', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     const post = makePost('p1', 'x', 'Short text');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan({ clipType: 'video' });
@@ -257,11 +235,10 @@ describe('buildRealignPlan', () => {
     };
     vi.mocked(loadScheduleConfig).mockReturnValue(configNoSlots as ReturnType<typeof loadScheduleConfig>);
 
-    const sdk = makeSdk();
     const post = makePost('p1', 'x', 'Hello', null, 'draft');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'draft') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'draft') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -280,11 +257,10 @@ describe('buildRealignPlan', () => {
     };
     vi.mocked(loadScheduleConfig).mockReturnValue(configNoSlots as ReturnType<typeof loadScheduleConfig>);
 
-    const sdk = makeSdk();
     const post = makePost('p1', 'x', 'Hello', null, 'cancelled');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'cancelled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'cancelled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -294,15 +270,14 @@ describe('buildRealignPlan', () => {
 
   it('skips posts that are already at the correct scheduled time', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     // Post already scheduled at the exact slot time
     const post = makePost('p1', 'x', 'Existing post', slot, 'scheduled');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -313,14 +288,13 @@ describe('buildRealignPlan', () => {
 
   it('does not skip draft posts even if time matches', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slot = '2025-07-01T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slot]);
 
     const post = makePost('p1', 'x', 'Draft post', slot, 'draft');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'draft') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'draft') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -331,15 +305,14 @@ describe('buildRealignPlan', () => {
 
   it('cancels excess posts when more posts than available slots', async () => {
     setupConfig();
-    const sdk = makeSdk();
     // Only one slot returned
     vi.mocked(generateSlots).mockReturnValue(['2025-07-01T09:00:00-05:00']);
 
     const post1 = makePost('p1', 'x', 'First', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Second', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -351,16 +324,15 @@ describe('buildRealignPlan', () => {
 
   it('sorts resulting posts by newScheduledFor time', async () => {
     setupConfig();
-    const sdk = makeSdk();
     const slotEarly = '2025-07-01T09:00:00-05:00';
     const slotLate = '2025-07-02T09:00:00-05:00';
     vi.mocked(generateSlots).mockReturnValue([slotLate, slotEarly]);
 
     const post1 = makePost('p1', 'x', 'First', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Second', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -373,14 +345,13 @@ describe('buildRealignPlan', () => {
 
   it('truncates content preview to 80 chars', async () => {
     setupConfig();
-    const sdk = makeSdk();
     vi.mocked(generateSlots).mockReturnValue(['2025-07-01T09:00:00-05:00']);
 
     const longContent = 'X'.repeat(200);
     const post = makePost('p1', 'x', longContent, '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -390,7 +361,6 @@ describe('buildRealignPlan', () => {
 
   it('handles posts with platforms as objects with platform property', async () => {
     setupConfig();
-    const sdk = makeSdk();
     vi.mocked(generateSlots).mockReturnValue(['2025-07-01T09:00:00-05:00']);
 
     const post = {
@@ -401,9 +371,9 @@ describe('buildRealignPlan', () => {
       status: 'scheduled',
       platforms: [{ platform: 'x' }],
     };
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -413,25 +383,25 @@ describe('buildRealignPlan', () => {
 
   it('filters by platform when option is provided', async () => {
     setupConfig();
-    const sdk = makeSdk();
     vi.mocked(generateSlots).mockReturnValue([]);
 
     await buildRealignPlan({ platform: 'x' });
 
-    for (const call of sdk.posts.listPosts.mock.calls) {
-      expect((call[0] as Record<string, Record<string, unknown>>).query.platform).toBe('twitter');
+    for (const call of mockClient.listPosts.mock.calls) {
+      expect((call[0] as Record<string, unknown>).platform).toBe('twitter');
     }
   });
 
   it('handles API returning posts as { posts: [] } wrapper', async () => {
+    // The LateApiClient.extractArray normalizes { posts: [...] } → [...] internally,
+    // so the mock should return a flat array (the client handles unwrapping).
     setupConfig();
-    const sdk = makeSdk();
     vi.mocked(generateSlots).mockReturnValue(['2025-07-01T09:00:00-05:00']);
 
     const post = makePost('p1', 'x', 'Hello');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: { posts: [post] } };
-      return { data: { posts: [] } };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -445,8 +415,6 @@ describe('buildRealignPlan', () => {
 // =====================================================
 describe('executeRealignPlan', () => {
   it('returns zero counts for an empty plan', async () => {
-    makeSdk();
-
     const result = await executeRealignPlan({
       posts: [],
       toCancel: [],
@@ -459,8 +427,6 @@ describe('executeRealignPlan', () => {
   });
 
   it('cancels posts in toCancel list via API', async () => {
-    const sdk = makeSdk();
-
     const plan: RealignPlan = {
       posts: [],
       toCancel: [
@@ -476,16 +442,11 @@ describe('executeRealignPlan', () => {
 
     expect(result.cancelled).toBe(2);
     expect(result.updated).toBe(0);
-    expect(sdk.posts.updatePost).toHaveBeenCalledTimes(2);
-    expect(sdk.posts.updatePost).toHaveBeenCalledWith({
-      path: { postId: 'c1' },
-      body: { status: 'cancelled' },
-    });
+    expect(mockClient.updatePost).toHaveBeenCalledTimes(2);
+    expect(mockClient.updatePost).toHaveBeenCalledWith('c1', { status: 'cancelled' });
   });
 
   it('updates posts with new scheduledFor and isDraft false', async () => {
-    const sdk = makeSdk();
-
     const plan: RealignPlan = {
       posts: [
         {
@@ -506,15 +467,10 @@ describe('executeRealignPlan', () => {
     const result = await executeRealignPlan(plan);
 
     expect(result.updated).toBe(1);
-    expect(sdk.posts.updatePost).toHaveBeenCalledWith({
-      path: { postId: 'u1' },
-      body: { scheduledFor: '2025-07-01T09:00:00-05:00', isDraft: false },
-    });
+    expect(mockClient.updatePost).toHaveBeenCalledWith('u1', { scheduledFor: '2025-07-01T09:00:00-05:00', isDraft: false });
   });
 
   it('handles mixed cancel and update operations', async () => {
-    const sdk = makeSdk();
-
     const plan: RealignPlan = {
       posts: [
         {
@@ -539,12 +495,11 @@ describe('executeRealignPlan', () => {
     expect(result.cancelled).toBe(1);
     expect(result.updated).toBe(1);
     expect(result.failed).toBe(0);
-    expect(sdk.posts.updatePost).toHaveBeenCalledTimes(2);
+    expect(mockClient.updatePost).toHaveBeenCalledTimes(2);
   });
 
   it('records errors and increments failed count when cancel fails', async () => {
-    const sdk = makeSdk();
-    sdk.posts.updatePost.mockRejectedValueOnce(new Error('API down'));
+    mockClient.updatePost.mockRejectedValueOnce(new Error('API down'));
 
     const plan: RealignPlan = {
       posts: [],
@@ -565,8 +520,7 @@ describe('executeRealignPlan', () => {
   });
 
   it('records errors when update fails', async () => {
-    const sdk = makeSdk();
-    sdk.posts.updatePost.mockRejectedValueOnce(new Error('Timeout'));
+    mockClient.updatePost.mockRejectedValueOnce(new Error('Timeout'));
 
     const plan: RealignPlan = {
       posts: [
@@ -593,8 +547,7 @@ describe('executeRealignPlan', () => {
   });
 
   it('handles non-Error thrown values', async () => {
-    const sdk = makeSdk();
-    sdk.posts.updatePost.mockRejectedValueOnce('string error');
+    mockClient.updatePost.mockRejectedValueOnce('string error');
 
     const plan: RealignPlan = {
       posts: [
@@ -619,10 +572,9 @@ describe('executeRealignPlan', () => {
   });
 
   it('continues executing remaining items after a failure', async () => {
-    const sdk = makeSdk();
-    sdk.posts.updatePost
+    mockClient.updatePost
       .mockRejectedValueOnce(new Error('first fail'))
-      .mockResolvedValueOnce({ data: {} });
+      .mockResolvedValueOnce({});
 
     const plan: RealignPlan = {
       posts: [
@@ -653,7 +605,7 @@ describe('executeRealignPlan', () => {
 
     expect(result.failed).toBe(1);
     expect(result.updated).toBe(1);
-    expect(sdk.posts.updatePost).toHaveBeenCalledTimes(2);
+    expect(mockClient.updatePost).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -663,7 +615,6 @@ describe('executeRealignPlan', () => {
 describe('buildPrioritizedRealignPlan', () => {
   it('returns empty plan when no schedule config is loaded', async () => {
     vi.mocked(loadScheduleConfig).mockReturnValue(null);
-    makeSdk();
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['test'], saturation: 1.0 }],
@@ -674,7 +625,6 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('returns base plan as-is when base plan has no posts', async () => {
     setupConfig();
-    makeSdk();
     vi.mocked(generateSlots).mockReturnValue([]);
 
     const plan = await buildPrioritizedRealignPlan({
@@ -686,13 +636,12 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('assigns priority posts to earlier slots based on keyword match', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Launch announcement coming soon', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular update today', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     // First call: buildRealignPlan needs slots
@@ -726,13 +675,12 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('skips priority assignment when saturation probability is not met', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Launch post', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular post', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -756,12 +704,11 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('falls back to remaining pool when no priority rules match', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post = makePost('p1', 'x', 'No keywords match here', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -778,12 +725,11 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('respects date range filtering with from/to', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post = makePost('p1', 'x', 'Launch content', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     // Slots outside the rule date range
@@ -811,14 +757,13 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('handles multiple priority rules in order', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Launch announcement', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Urgent update', '2025-06-11T10:00:00Z');
     const post3 = makePost('p3', 'x', 'Regular stuff', '2025-06-12T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2, post3] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2, post3];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -845,12 +790,11 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('performs case-insensitive keyword matching', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post = makePost('p1', 'x', 'LAUNCH DAY!', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -872,13 +816,12 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('preserves toCancel, skipped, unmatched, and totalFetched from base plan', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     // Return posts for scheduled status, including one that will be cancelled (no platform match)
     const post1 = makePost('p1', 'x', 'Hello', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -897,14 +840,13 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('generates 2x slots for prioritized scheduling', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Post A', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Post B', '2025-06-11T10:00:00Z');
     const post3 = makePost('p3', 'x', 'Post C', '2025-06-12T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2, post3] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2, post3];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -925,13 +867,12 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('sorts result posts by newScheduledFor time', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Post A', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Post B', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -951,12 +892,11 @@ describe('buildPrioritizedRealignPlan', () => {
 
   it('skips slots when generateSlots returns empty array for a group', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post = makePost('p1', 'x', 'Hello', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     vi.mocked(generateSlots)
@@ -977,13 +917,12 @@ describe('buildPrioritizedRealignPlan', () => {
 describe('buildRealignPlan → executeRealignPlan integration', () => {
   it('builds a plan and executes it end-to-end', async () => {
     setupConfig();
-    const sdk = makeSdk();
     vi.mocked(generateSlots).mockReturnValue(['2025-07-01T09:00:00-05:00']);
 
     const post = makePost('p1', 'x', 'Tweet', '2025-06-10T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -1003,11 +942,10 @@ describe('buildRealignPlan → executeRealignPlan integration', () => {
     };
     vi.mocked(loadScheduleConfig).mockReturnValue(configNoSlots as ReturnType<typeof loadScheduleConfig>);
 
-    const sdk = makeSdk();
     const post = makePost('p1', 'x', 'To cancel', null, 'draft');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'draft') return { data: [post] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'draft') return [post];
+      return [];
     });
 
     const plan = await buildRealignPlan();
@@ -1015,10 +953,7 @@ describe('buildRealignPlan → executeRealignPlan integration', () => {
 
     const result = await executeRealignPlan(plan);
     expect(result.cancelled).toBe(1);
-    expect(sdk.posts.updatePost).toHaveBeenCalledWith({
-      path: { postId: 'p1' },
-      body: { status: 'cancelled' },
-    });
+    expect(mockClient.updatePost).toHaveBeenCalledWith('p1', { status: 'cancelled' });
   });
 });
 
@@ -1028,13 +963,12 @@ describe('buildRealignPlan → executeRealignPlan integration', () => {
 describe('buildPrioritizedRealignPlan → executeRealignPlan integration', () => {
   it('builds a prioritized plan and executes it end-to-end', async () => {
     setupConfig();
-    const sdk = makeSdk();
 
     const post1 = makePost('p1', 'x', 'Launch product today!', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular update', '2025-06-11T10:00:00Z');
-    sdk.posts.listPosts.mockImplementation(async (opts: Record<string, Record<string, unknown>>) => {
-      if (opts.query.status === 'scheduled') return { data: [post1, post2] };
-      return { data: [] };
+    mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
+      if (opts.status === 'scheduled') return [post1, post2];
+      return [];
     });
 
     vi.mocked(generateSlots)

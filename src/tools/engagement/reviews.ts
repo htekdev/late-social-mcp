@@ -1,5 +1,5 @@
 import { server } from '../../mcpServer.js';
-import { getClient, unwrap, toApiPlatform } from '../../client/lateClient.js';
+import { getClient, toApiPlatform } from '../../client/lateClient.js';
 import { textResponse, errorResponse } from '../../types/tools.js';
 import { z } from 'zod';
 
@@ -15,22 +15,16 @@ server.tool(
   },
   async ({ accountId, platform, limit }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.reviews.listInboxReviews({
-          query: {
-            accountId,
-            platform: platform ? toApiPlatform(platform) : undefined,
-            limit,
-          },
-        }),
-      );
+      const client = getClient();
+      const items = await client.listReviews({
+        accountId,
+        platform: platform ? toApiPlatform(platform) : undefined,
+        limit,
+      });
 
-      if (!data || (Array.isArray(data) && data.length === 0)) {
+      if (!items || items.length === 0) {
         return textResponse('No reviews found.');
       }
-
-      const items = Array.isArray(data) ? data : [data];
       const lines: string[] = ['⭐ Reviews', '═'.repeat(60)];
 
       for (const item of items) {
@@ -68,15 +62,8 @@ server.tool(
   },
   async ({ reviewId, accountId, message }) => {
     try {
-      const late = getClient().sdk;
-      const data = unwrap(
-        await late.reviews.replyToInboxReview({
-          path: { reviewId },
-          body: { accountId, message },
-        }),
-      );
-
-      const result = data as Record<string, unknown> | undefined;
+      const client = getClient();
+      const result = await client.replyToReview(reviewId, accountId, message) as Record<string, unknown> | undefined;
       const lines: string[] = [
         '✅ Review Reply Sent',
         '═'.repeat(45),
@@ -105,13 +92,8 @@ server.tool(
   },
   async ({ reviewReplyId, accountId }) => {
     try {
-      const late = getClient().sdk;
-      unwrap(
-        await late.reviews.deleteInboxReviewReply({
-          path: { reviewReplyId },
-          body: { accountId },
-        }),
-      );
+      const client = getClient();
+      await client.deleteReviewReply(reviewReplyId, accountId);
 
       return textResponse(
         [

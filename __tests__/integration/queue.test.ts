@@ -1,21 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockClient, type MockLateApiClient } from '../helpers/mockApi.js';
+
+let mockClient: MockLateApiClient;
 
 vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
 vi.mock('../../src/client/lateClient.js', () => ({
-  getClient: vi.fn(),
-  unwrap: vi.fn((result: { data?: unknown; error?: unknown }) => {
-    if (result.error) throw new Error(String(result.error));
-    return result.data;
-  }),
+  getClient: vi.fn(() => mockClient),
   toApiPlatform: vi.fn((p: string) => (p === 'x' ? 'twitter' : p)),
   toDisplayPlatform: vi.fn((p: string) => (p === 'twitter' ? 'x' : p)),
+  resetClient: vi.fn(),
+  LateApiClient: vi.fn(),
 }));
 
 import { server } from '../../src/mcpServer.js';
-import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 await import('../../src/tools/queue.js');
 
@@ -35,21 +35,6 @@ function getToolHandler(toolName: string): ToolHandler {
   return handler;
 }
 
-function mockSdk(overrides: Record<string, unknown> = {}) {
-  const sdk = {
-    queue: {
-      listQueueSlots: vi.fn().mockResolvedValue({ data: [] }),
-      createQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      updateQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      deleteQueueSlot: vi.fn().mockResolvedValue({ data: {} }),
-      previewQueue: vi.fn().mockResolvedValue({ data: [] }),
-    },
-    ...overrides,
-  };
-  vi.mocked(getClient).mockReturnValue({ sdk } as unknown as ReturnType<typeof getClient>);
-  return sdk;
-}
-
 // ── Registration ──
 
 describe('queue tools registration', () => {
@@ -66,12 +51,13 @@ describe('queue tools registration', () => {
 // ── list_queues ──
 
 describe('list_queues', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('returns formatted queue list', async () => {
-    const sdk = mockSdk();
-    sdk.queue.listQueueSlots.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listQueues.mockResolvedValue([
       {
         id: 'q1',
         name: 'Weekday Mornings',
@@ -100,8 +86,7 @@ describe('list_queues', () => {
   });
 
   it('shows days and times in queue listing', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.listQueues.mockResolvedValue([
       { id: 'q1', name: 'Test', days: ['mon', 'wed'], times: ['08:00', '16:00'] },
     ]);
 
@@ -115,8 +100,7 @@ describe('list_queues', () => {
   });
 
   it('returns empty message when no queues exist', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.listQueues.mockResolvedValue([]);
 
     const handler = getToolHandler('list_queues');
     const result = await handler({ profileId: 'prof1' });
@@ -126,10 +110,7 @@ describe('list_queues', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Profile not found');
-    });
+    mockClient.listQueues.mockRejectedValue(new Error('Profile not found'));
 
     const handler = getToolHandler('list_queues');
     const result = await handler({ profileId: 'bad-prof' });
@@ -142,13 +123,12 @@ describe('list_queues', () => {
 // ── create_queue ──
 
 describe('create_queue', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('creates a queue with days and times', async () => {
-    const sdk = mockSdk();
-    sdk.queue.createQueueSlot.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
-
     const handler = getToolHandler('create_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -164,11 +144,7 @@ describe('create_queue', () => {
     expect(result.content[0].text).toContain('09:00');
   });
 
-  it('passes correct body to SDK', async () => {
-    const sdk = mockSdk();
-    sdk.queue.createQueueSlot.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
-
+  it('passes correct body to client', async () => {
     const handler = getToolHandler('create_queue');
     await handler({
       profileId: 'prof1',
@@ -178,21 +154,16 @@ describe('create_queue', () => {
       setAsDefault: true,
     });
 
-    expect(sdk.queue.createQueueSlot).toHaveBeenCalledWith({
-      body: {
-        profileId: 'prof1',
-        name: 'Test',
-        days: ['mon', 'wed', 'fri'],
-        times: ['10:00', '15:00'],
-        setAsDefault: true,
-      },
+    expect(mockClient.createQueue).toHaveBeenCalledWith({
+      profileId: 'prof1',
+      name: 'Test',
+      days: ['mon', 'wed', 'fri'],
+      times: ['10:00', '15:00'],
+      setAsDefault: true,
     });
   });
 
   it('marks default queue in output', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
-
     const handler = getToolHandler('create_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -206,8 +177,6 @@ describe('create_queue', () => {
   });
 
   it('returns error when days list is empty', async () => {
-    mockSdk();
-
     const handler = getToolHandler('create_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -220,8 +189,6 @@ describe('create_queue', () => {
   });
 
   it('returns error when times list is empty', async () => {
-    mockSdk();
-
     const handler = getToolHandler('create_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -234,10 +201,7 @@ describe('create_queue', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Quota exceeded');
-    });
+    mockClient.createQueue.mockRejectedValue(new Error('Quota exceeded'));
 
     const handler = getToolHandler('create_queue');
     const result = await handler({
@@ -254,13 +218,12 @@ describe('create_queue', () => {
 // ── update_queue ──
 
 describe('update_queue', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('updates queue name successfully', async () => {
-    const sdk = mockSdk();
-    sdk.queue.updateQueueSlot.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
-
     const handler = getToolHandler('update_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -274,9 +237,6 @@ describe('update_queue', () => {
   });
 
   it('updates days and times', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue({});
-
     const handler = getToolHandler('update_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -291,8 +251,6 @@ describe('update_queue', () => {
   });
 
   it('returns error when days string results in empty list', async () => {
-    mockSdk();
-
     const handler = getToolHandler('update_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -305,8 +263,6 @@ describe('update_queue', () => {
   });
 
   it('returns error when times string results in empty list', async () => {
-    mockSdk();
-
     const handler = getToolHandler('update_queue');
     const result = await handler({
       profileId: 'prof1',
@@ -319,10 +275,7 @@ describe('update_queue', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Queue not found');
-    });
+    mockClient.updateQueue.mockRejectedValue(new Error('Queue not found'));
 
     const handler = getToolHandler('update_queue');
     const result = await handler({
@@ -339,13 +292,12 @@ describe('update_queue', () => {
 // ── delete_queue ──
 
 describe('delete_queue', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('deletes a queue successfully', async () => {
-    const sdk = mockSdk();
-    sdk.queue.deleteQueueSlot.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
-
     const handler = getToolHandler('delete_queue');
     const result = await handler({ profileId: 'prof1', queueId: 'q1' });
 
@@ -354,24 +306,15 @@ describe('delete_queue', () => {
     expect(result.content[0].text).toContain('q1');
   });
 
-  it('calls SDK with correct query parameters', async () => {
-    const sdk = mockSdk();
-    sdk.queue.deleteQueueSlot.mockResolvedValue({ data: {} });
-    vi.mocked(unwrap).mockReturnValue({});
-
+  it('calls client with correct positional parameters', async () => {
     const handler = getToolHandler('delete_queue');
     await handler({ profileId: 'prof1', queueId: 'q99' });
 
-    expect(sdk.queue.deleteQueueSlot).toHaveBeenCalledWith({
-      query: { profileId: 'prof1', queueId: 'q99' },
-    });
+    expect(mockClient.deleteQueue).toHaveBeenCalledWith('prof1', 'q99');
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Forbidden');
-    });
+    mockClient.deleteQueue.mockRejectedValue(new Error('Forbidden'));
 
     const handler = getToolHandler('delete_queue');
     const result = await handler({ profileId: 'prof1', queueId: 'q1' });
@@ -384,12 +327,13 @@ describe('delete_queue', () => {
 // ── preview_queue_slots ──
 
 describe('preview_queue_slots', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClient = createMockClient();
+  });
 
   it('previews upcoming queue slots', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.previewQueueSlots.mockResolvedValue([
       { datetime: '2025-06-16T09:00:00Z' },
       { datetime: '2025-06-16T12:00:00Z' },
       { datetime: '2025-06-17T09:00:00Z' },
@@ -405,34 +349,25 @@ describe('preview_queue_slots', () => {
   });
 
   it('respects custom count parameter', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([{ datetime: '2025-06-16T09:00:00Z' }]);
+    mockClient.previewQueueSlots.mockResolvedValue([{ datetime: '2025-06-16T09:00:00Z' }]);
 
     const handler = getToolHandler('preview_queue_slots');
     await handler({ profileId: 'prof1', count: 5 });
 
-    expect(sdk.queue.previewQueue).toHaveBeenCalledWith({
-      query: { profileId: 'prof1', count: 5 },
-    });
+    expect(mockClient.previewQueueSlots).toHaveBeenCalledWith('prof1', { count: 5 });
   });
 
   it('passes queueId when specified', async () => {
-    const sdk = mockSdk();
-    sdk.queue.previewQueue.mockResolvedValue({ data: [] });
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.previewQueueSlots.mockResolvedValue([]);
 
     const handler = getToolHandler('preview_queue_slots');
     await handler({ profileId: 'prof1', queueId: 'q2', count: 3 });
 
-    expect(sdk.queue.previewQueue).toHaveBeenCalledWith({
-      query: { profileId: 'prof1', count: 3, queueId: 'q2' },
-    });
+    expect(mockClient.previewQueueSlots).toHaveBeenCalledWith('prof1', { count: 3, queueId: 'q2' });
   });
 
   it('returns empty message when no slots found', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([]);
+    mockClient.previewQueueSlots.mockResolvedValue([]);
 
     const handler = getToolHandler('preview_queue_slots');
     const result = await handler({ profileId: 'prof1' });
@@ -442,8 +377,7 @@ describe('preview_queue_slots', () => {
   });
 
   it('numbers the slots sequentially', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockReturnValue([
+    mockClient.previewQueueSlots.mockResolvedValue([
       { datetime: '2025-06-16T09:00:00Z' },
       { datetime: '2025-06-16T12:00:00Z' },
     ]);
@@ -456,10 +390,7 @@ describe('preview_queue_slots', () => {
   });
 
   it('returns error on SDK failure', async () => {
-    mockSdk();
-    vi.mocked(unwrap).mockImplementation(() => {
-      throw new Error('Service unavailable');
-    });
+    mockClient.previewQueueSlots.mockRejectedValue(new Error('Service unavailable'));
 
     const handler = getToolHandler('preview_queue_slots');
     const result = await handler({ profileId: 'prof1' });
