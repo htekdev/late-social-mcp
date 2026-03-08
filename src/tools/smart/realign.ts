@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { server } from '../../server.js';
+import { server } from '../../mcpServer.js';
 import { textResponse, errorResponse } from '../../types/tools.js';
 import { buildRealignPlan, executeRealignPlan, type RealignPlan } from '../../smart/realignment.js';
 import { buildPrioritizedRealignPlan, type PriorityRule } from '../../smart/prioritizedRealignment.js';

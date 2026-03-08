@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { server } from '../server.js';
+import { server } from '../mcpServer.js';
 import { getClient, unwrap } from '../client/lateClient.js';
 import { getLateApiKey, loadConfig, saveConfig, CONFIG_FILE } from '../config/config.js';
 import { validateScheduleConfig } from '../config/scheduleConfig.js';

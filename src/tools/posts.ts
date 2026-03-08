@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { server } from '../server.js';
+import { server } from '../mcpServer.js';
 import { getClient, unwrap, toApiPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 

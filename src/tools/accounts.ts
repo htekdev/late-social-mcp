@@ -1,4 +1,4 @@
-import { server } from '../server.js';
+import { server } from '../mcpServer.js';
 import { getClient, unwrap, toDisplayPlatform } from '../client/lateClient.js';
 import { textResponse, errorResponse } from '../types/tools.js';
 import { z } from 'zod';

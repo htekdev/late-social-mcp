@@ -1,17 +1,8 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { server } from './mcpServer.js';
 
-export const server = new McpServer(
-  {
-    name: 'late-social-mcp',
-    version: '0.1.0',
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  },
-);
+// Re-export for tool modules that import from server.ts
+export { server };
 
 // Side-effect imports register tools on the shared `server` instance
 import './tools/setup.js';

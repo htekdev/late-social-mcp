@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { server } from '../../server.js';
+import { server } from '../../mcpServer.js';
 import { textResponse, errorResponse } from '../../types/tools.js';
 import { detectConflicts, autoResolveConflicts } from '../../smart/scheduler.js';
 

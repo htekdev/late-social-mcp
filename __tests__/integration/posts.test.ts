@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocks — must be declared before any imports that trigger side-effects
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/server.js', () => ({
+vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
@@ -39,7 +39,7 @@ vi.mock('node:fs', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { server } from '../../src/server.js';
+import { server } from '../../src/mcpServer.js';
 import { getClient, unwrap } from '../../src/client/lateClient.js';
 import { getLateApiKey, loadConfig, saveConfig } from '../../src/config/config.js';
 import { validateScheduleConfig } from '../../src/config/scheduleConfig.js';

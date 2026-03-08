@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 // a `tool` spy. This avoids importing the real server.ts (which calls main()
 // and tries to connect a transport).
 // ---------------------------------------------------------------------------
-vi.mock('../../src/server.js', () => ({
+vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
@@ -37,7 +37,7 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-import { server } from '../../src/server.js';
+import { server } from '../../src/mcpServer.js';
 
 // Import all the same tool modules that server.ts imports via side-effects.
 // Their top-level code calls server.tool() which is captured by our mock.

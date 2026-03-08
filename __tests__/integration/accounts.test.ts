@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock('../../src/server.js', () => ({
+vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
@@ -18,7 +18,7 @@ vi.mock('../../src/client/lateClient.js', () => ({
 
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { server } from '../../src/server.js';
+import { server } from '../../src/mcpServer.js';
 import { getClient, unwrap } from '../../src/client/lateClient.js';
 
 // Side-effect imports: each module calls server.tool() to register handlers

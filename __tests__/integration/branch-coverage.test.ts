@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
-vi.mock('../../src/server.js', () => ({
+vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
@@ -67,7 +67,7 @@ vi.mock('../../src/config/scheduleConfig.js', () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────────────
 
-import { server } from '../../src/server.js';
+import { server } from '../../src/mcpServer.js';
 import { getClient } from '../../src/client/lateClient.js';
 
 // Side-effect imports register tool handlers

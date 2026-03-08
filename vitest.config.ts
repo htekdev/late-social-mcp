@@ -8,7 +8,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov", "json-summary"],
       include: ["src/**/*.ts"],
-      exclude: ["src/types/**/*.ts", "src/server.ts"],
+      exclude: ["src/types/**/*.ts", "src/server.ts", "src/mcpServer.ts"],
       thresholds: {
         statements: 80,
         branches: 75,

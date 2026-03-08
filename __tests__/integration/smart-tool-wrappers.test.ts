@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 // Mock ALL dependencies BEFORE any imports that touch them
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/server.js', () => ({
+vi.mock('../../src/mcpServer.js', () => ({
   server: { tool: vi.fn() },
 }));
 
@@ -50,7 +50,7 @@ vi.mock('../../src/client/lateClient.js', () => ({
 // Import mocked modules
 // ---------------------------------------------------------------------------
 
-import { server } from '../../src/server.js';
+import { server } from '../../src/mcpServer.js';
 import { buildRealignPlan, executeRealignPlan } from '../../src/smart/realignment.js';
 import { buildPrioritizedRealignPlan } from '../../src/smart/prioritizedRealignment.js';
 import { detectConflicts, autoResolveConflicts } from '../../src/smart/scheduler.js';
