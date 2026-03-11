@@ -53,9 +53,9 @@ describe('list_commented_posts', () => {
   });
 
   it('returns formatted list of commented posts', async () => {
-    mockClient.listCommentedPosts.mockResolvedValue([
+    mockClient.listCommentedPosts.mockResolvedValue({ data: [
       { postId: 'p1', platform: 'instagram', content: 'Check this out', commentCount: 5 },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_commented_posts');
     const result = await handler({});
@@ -67,7 +67,7 @@ describe('list_commented_posts', () => {
   });
 
   it('returns empty message when no posts', async () => {
-    mockClient.listCommentedPosts.mockResolvedValue([]);
+    mockClient.listCommentedPosts.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('list_commented_posts');
     const result = await handler({});
@@ -92,10 +92,10 @@ describe('get_post_comments', () => {
   });
 
   it('returns formatted comments', async () => {
-    mockClient.getPostComments.mockResolvedValue([
+    mockClient.getPostComments.mockResolvedValue({ data: [
       { id: 'cm1', authorName: 'Alice', message: 'Great post!', createdAt: '2024-06-01', likes: 3, replyCount: 1 },
       { id: 'cm2', authorName: 'Bob', message: 'Nice!', createdAt: '2024-06-02', likes: 0 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_post_comments');
     const result = await handler({ postId: 'p1' });
@@ -108,7 +108,7 @@ describe('get_post_comments', () => {
   });
 
   it('returns empty when no comments', async () => {
-    mockClient.getPostComments.mockResolvedValue([]);
+    mockClient.getPostComments.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('get_post_comments');
     const result = await handler({ postId: 'p1' });

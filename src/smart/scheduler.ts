@@ -60,7 +60,7 @@ interface ScheduledPost {
 async function fetchScheduledPosts(platform?: string): Promise<ScheduledPost[]> {
   const client = getClient();
   const apiPlatform = platform ? toApiPlatform(platform) : undefined;
-  const posts = await client.listPosts({ status: 'scheduled', platform: apiPlatform, limit: 200 });
+  const { data: posts } = await client.listPosts({ status: 'scheduled', platform: apiPlatform, limit: 200 });
   return posts.map((p: unknown) => {
     const post = p as Record<string, unknown>;
     const platforms = post.platforms as unknown[];

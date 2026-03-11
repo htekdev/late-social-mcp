@@ -74,10 +74,10 @@ describe('list_accounts', () => {
   });
 
   it('returns formatted account list', async () => {
-    mockClient.listAccounts.mockResolvedValue([
+    mockClient.listAccounts.mockResolvedValue({ data: [
       { platform: 'twitter', displayName: 'MyBrand', username: 'mybrand', isActive: true },
       { platform: 'instagram', displayName: 'MyInsta', username: 'myinsta', isActive: false },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_accounts')({ platform: 'twitter' });
 
@@ -90,7 +90,7 @@ describe('list_accounts', () => {
   });
 
   it('returns empty message when no accounts', async () => {
-    mockClient.listAccounts.mockResolvedValue([]);
+    mockClient.listAccounts.mockResolvedValue({ data: [] });
 
     const result = await getToolHandler('list_accounts')({});
 
@@ -170,10 +170,10 @@ describe('list_profiles', () => {
   });
 
   it('returns formatted profile list', async () => {
-    mockClient.listProfiles.mockResolvedValue([
+    mockClient.listProfiles.mockResolvedValue({ data: [
       { _id: 'prof-1', name: 'Marketing', color: '#FF0000', description: 'Marketing team profile' },
       { _id: 'prof-2', name: 'Sales', color: '#00FF00', description: 'Sales team profile' },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_profiles')({});
 
@@ -186,7 +186,7 @@ describe('list_profiles', () => {
   });
 
   it('returns empty message when no profiles', async () => {
-    mockClient.listProfiles.mockResolvedValue([]);
+    mockClient.listProfiles.mockResolvedValue({ data: [] });
 
     const result = await getToolHandler('list_profiles')({});
 
@@ -698,10 +698,10 @@ describe('get_post_logs', () => {
   });
 
   it('returns formatted post log entries', async () => {
-    mockClient.getPostLogs.mockResolvedValue([
+    mockClient.getPostLogs.mockResolvedValue({ data: [
       { platform: 'twitter', timestamp: '2024-06-01T10:00:00Z', status: 'published', message: 'Post went live' },
       { platform: 'instagram', timestamp: '2024-06-01T10:01:00Z', status: 'failed', error: 'Token expired' },
-    ]);
+    ] });
 
     const result = await getToolHandler('get_post_logs')({ postId: 'post-123' });
 
@@ -711,11 +711,11 @@ describe('get_post_logs', () => {
     expect(result.content[0].text).toContain('Post went live');
     expect(result.content[0].text).toContain('failed');
     expect(result.content[0].text).toContain('Error: Token expired');
-    expect(mockClient.getPostLogs).toHaveBeenCalledWith('post-123');
+    expect(mockClient.getPostLogs).toHaveBeenCalledWith('post-123', { limit: undefined, page: undefined });
   });
 
   it('returns empty message when no logs', async () => {
-    mockClient.getPostLogs.mockResolvedValue([]);
+    mockClient.getPostLogs.mockResolvedValue({ data: [] });
 
     const result = await getToolHandler('get_post_logs')({ postId: 'post-empty' });
 
@@ -740,9 +740,9 @@ describe('list_publishing_logs', () => {
   });
 
   it('returns formatted publishing log list', async () => {
-    mockClient.listPublishingLogs.mockResolvedValue([
+    mockClient.listPublishingLogs.mockResolvedValue({ data: [
       { platform: 'twitter', timestamp: '2024-06-01T09:00:00Z', status: 'published', action: 'publish', postId: 'p1', message: 'Sent' },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_publishing_logs')({ status: 'published', platform: 'twitter' });
 
@@ -759,9 +759,9 @@ describe('list_publishing_logs', () => {
   });
 
   it('handles object response with logs array and totalCount', async () => {
-    mockClient.listPublishingLogs.mockResolvedValue([
+    mockClient.listPublishingLogs.mockResolvedValue({ data: [
       { platform: 'instagram', timestamp: '2024-06-02T10:00:00Z', status: 'failed', error: 'Rate limited' },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_publishing_logs')({});
 
@@ -770,7 +770,7 @@ describe('list_publishing_logs', () => {
   });
 
   it('returns empty message when no logs match', async () => {
-    mockClient.listPublishingLogs.mockResolvedValue([]);
+    mockClient.listPublishingLogs.mockResolvedValue({ data: [] });
 
     const result = await getToolHandler('list_publishing_logs')({});
 
@@ -795,9 +795,9 @@ describe('list_connection_logs', () => {
   });
 
   it('returns formatted connection log list', async () => {
-    mockClient.listConnectionLogs.mockResolvedValue([
+    mockClient.listConnectionLogs.mockResolvedValue({ data: [
       { platform: 'twitter', timestamp: '2024-06-01T08:00:00Z', status: 'connected', message: 'OAuth success', accountId: 'acc-1' },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_connection_logs')({ platform: 'twitter', status: 'connected' });
 
@@ -813,9 +813,9 @@ describe('list_connection_logs', () => {
   });
 
   it('handles object response with logs array and totalCount', async () => {
-    mockClient.listConnectionLogs.mockResolvedValue([
+    mockClient.listConnectionLogs.mockResolvedValue({ data: [
       { platform: 'instagram', timestamp: '2024-06-03T12:00:00Z', status: 'disconnected', error: 'Token revoked', accountId: 'acc-2' },
-    ]);
+    ] });
 
     const result = await getToolHandler('list_connection_logs')({});
 
@@ -824,7 +824,7 @@ describe('list_connection_logs', () => {
   });
 
   it('returns empty message when no logs match', async () => {
-    mockClient.listConnectionLogs.mockResolvedValue([]);
+    mockClient.listConnectionLogs.mockResolvedValue({ data: [] });
 
     const result = await getToolHandler('list_connection_logs')({});
 

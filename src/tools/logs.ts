@@ -1,16 +1,20 @@
 import { server } from '../mcpServer.js';
 import { getClient, toDisplayPlatform } from '../client/lateClient.js';
-import { textResponse, errorResponse } from '../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../types/tools.js';
 import { z } from 'zod';
 
 server.tool(
   'get_post_logs',
   'Show the publishing log history for a specific post',
-  { postId: z.string() },
-  async ({ postId }) => {
+  {
+    postId: z.string(),
+    limit: z.number().optional().describe('Max results to return'),
+    page: z.number().optional().describe('Page number for pagination'),
+  },
+  async ({ postId, limit, page }) => {
     try {
       const client = getClient();
-      const logs = await client.getPostLogs(postId);
+      const { data: logs, pagination } = await client.getPostLogs(postId, { limit, page });
 
       if (logs.length === 0) {
         return textResponse(`No logs found for post ${postId}.`);
@@ -31,6 +35,7 @@ server.tool(
         if (entry.error) lines.push(`   Error: ${entry.error}`);
       }
 
+      lines.push(formatPaginationFooter(pagination, logs.length));
       return textResponse(lines.join('\n'));
     } catch (err: unknown) {
       return errorResponse(`Failed to get post logs: ${err instanceof Error ? err.message : String(err)}`);
@@ -46,8 +51,9 @@ server.tool(
     platform: z.string().optional(),
     action: z.string().optional(),
     limit: z.number().optional(),
+    page: z.number().optional().describe('Page number for pagination'),
   },
-  async ({ status, platform, action, limit }) => {
+  async ({ status, platform, action, limit, page }) => {
     try {
       const client = getClient();
       const query: Record<string, unknown> = {};
@@ -55,8 +61,9 @@ server.tool(
       if (platform) query.platform = platform;
       if (action) query.action = action;
       if (limit) query.limit = limit;
+      if (page) query.page = page;
 
-      const logs = await client.listPublishingLogs(query);
+      const { data: logs, pagination } = await client.listPublishingLogs(query);
 
       if (logs.length === 0) {
         return textResponse('No publishing logs found matching the filters.');
@@ -91,6 +98,7 @@ server.tool(
         if (entry.error) lines.push(`   Error: ${entry.error}`);
       }
 
+      lines.push(formatPaginationFooter(pagination, logs.length));
       return textResponse(lines.join('\n'));
     } catch (err: unknown) {
       return errorResponse(`Failed to list publishing logs: ${err instanceof Error ? err.message : String(err)}`);
@@ -105,16 +113,18 @@ server.tool(
     platform: z.string().optional(),
     status: z.string().optional(),
     limit: z.number().optional(),
+    page: z.number().optional().describe('Page number for pagination'),
   },
-  async ({ platform, status, limit }) => {
+  async ({ platform, status, limit, page }) => {
     try {
       const client = getClient();
       const query: Record<string, unknown> = {};
       if (platform) query.platform = platform;
       if (status) query.status = status;
       if (limit) query.limit = limit;
+      if (page) query.page = page;
 
-      const logs = await client.listConnectionLogs(query);
+      const { data: logs, pagination } = await client.listConnectionLogs(query);
 
       if (logs.length === 0) {
         return textResponse('No connection logs found matching the filters.');
@@ -146,6 +156,7 @@ server.tool(
         if (entry.accountId) lines.push(`   Account: ${entry.accountId}`);
       }
 
+      lines.push(formatPaginationFooter(pagination, logs.length));
       return textResponse(lines.join('\n'));
     } catch (err: unknown) {
       return errorResponse(`Failed to list connection logs: ${err instanceof Error ? err.message : String(err)}`);

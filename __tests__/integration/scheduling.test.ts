@@ -184,7 +184,7 @@ describe('find_next_slot', () => {
       scheduledFor: tomorrow.toISOString(),
       content: 'Already booked post',
     };
-    mockClient.listPosts.mockResolvedValue([scheduledPost]);
+    mockClient.listPosts.mockResolvedValue({ data: [scheduledPost] });
 
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
@@ -202,7 +202,7 @@ describe('find_next_slot', () => {
       scheduledFor: futureDate.toISOString(),
       content: 'A post on the same day',
     };
-    mockClient.listPosts.mockResolvedValue([nearbyPost]);
+    mockClient.listPosts.mockResolvedValue({ data: [nearbyPost] });
 
     const handler = getToolHandler('find_next_slot');
     const result = await handler({ platform: 'x' });
@@ -247,7 +247,7 @@ describe('view_calendar', () => {
         platforms: ['twitter'],
       },
     ];
-    mockClient.listPosts.mockResolvedValue(posts);
+    mockClient.listPosts.mockResolvedValue({ data: posts });
 
     const handler = getToolHandler('view_calendar');
     const result = await handler({});
@@ -284,7 +284,7 @@ describe('view_calendar', () => {
         platforms: ['instagram'],
       },
     ];
-    mockClient.listPosts.mockResolvedValue(posts);
+    mockClient.listPosts.mockResolvedValue({ data: posts });
 
     const handler = getToolHandler('view_calendar');
     const result = await handler({ days: 7 });

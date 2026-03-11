@@ -145,8 +145,8 @@ describe('buildRealignPlan', () => {
     const post2 = makePost('p2', 'x', 'Another tweet', '2025-06-16T10:00:00Z');
 
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -162,8 +162,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Short post');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -180,8 +180,8 @@ describe('buildRealignPlan', () => {
     const mediumContent = 'A'.repeat(500);
     const post = makePost('p1', 'x', mediumContent);
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -198,8 +198,8 @@ describe('buildRealignPlan', () => {
     const longContent = 'B'.repeat(1200);
     const post = makePost('p1', 'x', longContent);
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -215,8 +215,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Short text');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan({ clipType: 'video' });
@@ -237,8 +237,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Hello', null, 'draft');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'draft') return [post];
-      return [];
+      if (opts.status === 'draft') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -259,8 +259,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Hello', null, 'cancelled');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'cancelled') return [post];
-      return [];
+      if (opts.status === 'cancelled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -276,8 +276,8 @@ describe('buildRealignPlan', () => {
     // Post already scheduled at the exact slot time
     const post = makePost('p1', 'x', 'Existing post', slot, 'scheduled');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -293,8 +293,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Draft post', slot, 'draft');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'draft') return [post];
-      return [];
+      if (opts.status === 'draft') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -311,8 +311,8 @@ describe('buildRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'First', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Second', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -331,8 +331,8 @@ describe('buildRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'First', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Second', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -350,8 +350,8 @@ describe('buildRealignPlan', () => {
     const longContent = 'X'.repeat(200);
     const post = makePost('p1', 'x', longContent, '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -372,8 +372,8 @@ describe('buildRealignPlan', () => {
       platforms: [{ platform: 'x' }],
     };
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -400,8 +400,8 @@ describe('buildRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Hello');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -640,8 +640,8 @@ describe('buildPrioritizedRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'Launch announcement coming soon', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular update today', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     // First call: buildRealignPlan needs slots
@@ -679,8 +679,8 @@ describe('buildPrioritizedRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'Launch post', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular post', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -707,8 +707,8 @@ describe('buildPrioritizedRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'No keywords match here', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -728,8 +728,8 @@ describe('buildPrioritizedRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Launch content', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     // Slots outside the rule date range
@@ -762,8 +762,8 @@ describe('buildPrioritizedRealignPlan', () => {
     const post2 = makePost('p2', 'x', 'Urgent update', '2025-06-11T10:00:00Z');
     const post3 = makePost('p3', 'x', 'Regular stuff', '2025-06-12T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2, post3];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2, post3] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -793,8 +793,8 @@ describe('buildPrioritizedRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'LAUNCH DAY!', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -820,8 +820,8 @@ describe('buildPrioritizedRealignPlan', () => {
     // Return posts for scheduled status, including one that will be cancelled (no platform match)
     const post1 = makePost('p1', 'x', 'Hello', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -845,8 +845,8 @@ describe('buildPrioritizedRealignPlan', () => {
     const post2 = makePost('p2', 'x', 'Post B', '2025-06-11T10:00:00Z');
     const post3 = makePost('p3', 'x', 'Post C', '2025-06-12T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2, post3];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2, post3] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -871,8 +871,8 @@ describe('buildPrioritizedRealignPlan', () => {
     const post1 = makePost('p1', 'x', 'Post A', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Post B', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -895,8 +895,8 @@ describe('buildPrioritizedRealignPlan', () => {
 
     const post = makePost('p1', 'x', 'Hello', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)
@@ -921,8 +921,8 @@ describe('buildRealignPlan → executeRealignPlan integration', () => {
 
     const post = makePost('p1', 'x', 'Tweet', '2025-06-10T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -944,8 +944,8 @@ describe('buildRealignPlan → executeRealignPlan integration', () => {
 
     const post = makePost('p1', 'x', 'To cancel', null, 'draft');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'draft') return [post];
-      return [];
+      if (opts.status === 'draft') return { data: [post] };
+      return { data: [] };
     });
 
     const plan = await buildRealignPlan();
@@ -967,8 +967,8 @@ describe('buildPrioritizedRealignPlan → executeRealignPlan integration', () =>
     const post1 = makePost('p1', 'x', 'Launch product today!', '2025-06-10T10:00:00Z');
     const post2 = makePost('p2', 'x', 'Regular update', '2025-06-11T10:00:00Z');
     mockClient.listPosts.mockImplementation(async (opts: Record<string, unknown>) => {
-      if (opts.status === 'scheduled') return [post1, post2];
-      return [];
+      if (opts.status === 'scheduled') return { data: [post1, post2] };
+      return { data: [] };
     });
 
     vi.mocked(generateSlots)

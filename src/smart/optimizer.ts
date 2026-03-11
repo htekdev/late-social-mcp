@@ -13,7 +13,7 @@ export async function getBestTimesToPost(platform?: string): Promise<BestTimeRes
   const client = getClient();
 
   try {
-    const results = await client.getAnalytics(platform ? { platform } : {});
+    const { data: results } = await client.getAnalytics(platform ? { platform } : {});
 
     return results.map((item: unknown) => {
       const r = item as Record<string, unknown>;
@@ -47,7 +47,7 @@ export async function getPostingFrequency(platform?: string): Promise<PostingFre
   const client = getClient();
 
   try {
-    const results = await client.getAnalytics(platform ? { platform } : {});
+    const { data: results } = await client.getAnalytics(platform ? { platform } : {});
 
     return results.map((item: unknown) => {
       const r = item as Record<string, unknown>;
@@ -96,7 +96,7 @@ export async function getContentDecay(
 
   try {
     if (postId) {
-      const timeline = await client.getPostTimeline(postId, {});
+      const { data: timeline } = await client.getPostTimeline(postId, {});
 
       const publishedAt = '';
       const publishedMs = Date.now();
@@ -140,7 +140,7 @@ export async function getContentDecay(
       }];
     }
 
-    const posts = await client.getAnalytics({
+    const { data: posts } = await client.getAnalytics({
       platform: platform ?? undefined,
       limit: 20,
     });

@@ -122,12 +122,12 @@ describe('setup_late', () => {
 
   it('succeeds with profiles and accounts', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key-123');
-    mockClient.listProfiles.mockResolvedValue([
+    mockClient.listProfiles.mockResolvedValue({ data: [
       { name: 'Main Profile', description: 'My brand' },
-    ]);
-    mockClient.listAccounts.mockResolvedValue([
+    ] });
+    mockClient.listAccounts.mockResolvedValue({ data: [
       { isActive: true, platform: 'instagram', username: 'testuser', displayName: 'Test User' },
-    ]);
+    ] });
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -143,10 +143,10 @@ describe('setup_late', () => {
 
   it('shows inactive account with ✗ marker', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockClient.listProfiles.mockResolvedValue([]);
-    mockClient.listAccounts.mockResolvedValue([
+    mockClient.listProfiles.mockResolvedValue({ data: [] });
+    mockClient.listAccounts.mockResolvedValue({ data: [
       { isActive: false, platform: 'twitter', username: 'old', displayName: 'Old Account' },
-    ]);
+    ] });
 
     const handler = getToolHandler('setup_late');
     const result = await handler({});
@@ -194,10 +194,10 @@ describe('late_status', () => {
 
   it('returns full status with profiles, accounts, usage', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('test-key');
-    mockClient.listProfiles.mockResolvedValue([{ name: 'Brand', description: 'Main brand' }]);
-    mockClient.listAccounts.mockResolvedValue([
+    mockClient.listProfiles.mockResolvedValue({ data: [{ name: 'Brand', description: 'Main brand' }] });
+    mockClient.listAccounts.mockResolvedValue({ data: [
       { isActive: true, platform: 'instagram', username: 'brand', displayName: 'Brand IG' },
-    ]);
+    ] });
     mockClient.getUsageStats.mockResolvedValue({ postsPublished: 42, postsScheduled: 5 });
 
     const handler = getToolHandler('late_status');
@@ -226,9 +226,9 @@ describe('late_status', () => {
 
   it('shows inactive account with red indicator', async () => {
     vi.mocked(getLateApiKey).mockReturnValue('key');
-    mockClient.listAccounts.mockResolvedValue([
+    mockClient.listAccounts.mockResolvedValue({ data: [
       { isActive: false, platform: 'linkedin', username: 'corp', displayName: 'Corp LI' },
-    ]);
+    ] });
 
     const handler = getToolHandler('late_status');
     const result = await handler({});
@@ -332,7 +332,7 @@ describe('list_posts', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns formatted post list', async () => {
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       {
         id: 'post-1',
         status: 'scheduled',
@@ -340,7 +340,7 @@ describe('list_posts', () => {
         platforms: ['twitter', 'instagram'],
         scheduledFor: '2025-07-15T10:00:00Z',
       },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_posts');
     const result = await handler({});
@@ -382,10 +382,10 @@ describe('list_posts', () => {
   });
 
   it('returns multiple posts formatted with indices', async () => {
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { id: 'p1', status: 'draft', content: 'First', platforms: ['twitter'], scheduledFor: null },
       { id: 'p2', status: 'published', content: 'Second', platforms: ['instagram'], scheduledFor: null },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_posts');
     const result = await handler({});

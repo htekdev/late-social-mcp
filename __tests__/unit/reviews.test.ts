@@ -49,10 +49,10 @@ describe('list_reviews', () => {
   });
 
   it('returns formatted review list with star ratings', async () => {
-    mockClient.listReviews.mockResolvedValue([
+    mockClient.listReviews.mockResolvedValue({ data: [
       { id: 'r1', platform: 'google-business', authorName: 'Jane', rating: 4, message: 'Great service!', createdAt: '2024-06-01' },
       { id: 'r2', platform: 'facebook', authorName: 'John', rating: 2, message: 'Could be better', reply: 'Thanks for the feedback', createdAt: '2024-06-02' },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_reviews');
     const result = await handler({});
@@ -69,7 +69,7 @@ describe('list_reviews', () => {
   });
 
   it('returns empty message when no reviews', async () => {
-    mockClient.listReviews.mockResolvedValue([]);
+    mockClient.listReviews.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('list_reviews');
     const result = await handler({});

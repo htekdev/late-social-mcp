@@ -159,7 +159,7 @@ describe('LateApiClient', () => {
     const client = new LateApiClient('my-key');
     const result = await client.listPosts();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(result).toEqual([{ id: 'p1' }]);
+    expect(result).toEqual({ data: [{ id: 'p1' }] });
   });
 
   it('throws after max retries on persistent 429', async () => {
@@ -186,7 +186,7 @@ describe('LateApiClient', () => {
     );
     const client = new LateApiClient('my-key');
     const result = await client.listAccounts();
-    expect(result).toEqual([{ id: 'a1' }, { id: 'a2' }]);
+    expect(result).toEqual({ data: [{ id: 'a1' }, { id: 'a2' }] });
   });
 
   it('extracts array from multi-key wrapped response (picks first array)', async () => {
@@ -195,7 +195,7 @@ describe('LateApiClient', () => {
     );
     const client = new LateApiClient('my-key');
     const result = await client.listPosts();
-    expect(result).toEqual([{ id: 'p1' }]);
+    expect(result).toEqual({ data: [{ id: 'p1' }], pagination: { page: 1 } });
   });
 
   it('returns empty array when response has no array values', async () => {
@@ -204,7 +204,7 @@ describe('LateApiClient', () => {
     );
     const client = new LateApiClient('my-key');
     const result = await client.listPosts();
-    expect(result).toEqual([]);
+    expect(result).toEqual({ data: [], pagination: undefined });
   });
 
   it('returns raw array when response is already an array', async () => {
@@ -213,7 +213,7 @@ describe('LateApiClient', () => {
     );
     const client = new LateApiClient('my-key');
     const result = await client.listProfiles();
-    expect(result).toEqual([{ id: 'p1' }, { id: 'p2' }]);
+    expect(result).toEqual({ data: [{ id: 'p1' }, { id: 'p2' }] });
   });
 });
 
@@ -273,7 +273,7 @@ describe('LateApiClient — method coverage', () => {
   it('getPostLogs sends GET /logs/posts/:id', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { logs: [{ id: 'l1', action: 'publish' }] }));
     const result = await client.getPostLogs('p1');
-    expect(result).toEqual([{ id: 'l1', action: 'publish' }]);
+    expect(result).toEqual({ data: [{ id: 'l1', action: 'publish' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/logs/posts/p1');
   });
@@ -283,7 +283,7 @@ describe('LateApiClient — method coverage', () => {
   it('getAnalytics sends GET /analytics with query params', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { data: [{ impressions: 100 }] }));
     const result = await client.getAnalytics({ platform: 'twitter', limit: 10 });
-    expect(result).toEqual([{ impressions: 100 }]);
+    expect(result).toEqual({ data: [{ impressions: 100 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/analytics');
     expect(url).toContain('platform=twitter');
@@ -293,7 +293,7 @@ describe('LateApiClient — method coverage', () => {
   it('getDailyMetrics sends GET /analytics/daily', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { metrics: [{ date: '2024-01-01', impressions: 50 }] }));
     const result = await client.getDailyMetrics({ dateFrom: '2024-01-01', dateTo: '2024-01-31' });
-    expect(result).toEqual([{ date: '2024-01-01', impressions: 50 }]);
+    expect(result).toEqual({ data: [{ date: '2024-01-01', impressions: 50 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/analytics/daily');
     expect(url).toContain('dateFrom=2024-01-01');
@@ -302,7 +302,7 @@ describe('LateApiClient — method coverage', () => {
   it('getFollowerStats sends GET /accounts/followers', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { stats: [{ followers: 500 }] }));
     const result = await client.getFollowerStats({ accountId: 'acc1' });
-    expect(result).toEqual([{ followers: 500 }]);
+    expect(result).toEqual({ data: [{ followers: 500 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/accounts/followers');
   });
@@ -310,7 +310,7 @@ describe('LateApiClient — method coverage', () => {
   it('getPostTimeline sends GET /analytics/post-timeline with postId', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { timeline: [{ date: '2024-01-01', likes: 10 }] }));
     const result = await client.getPostTimeline('p1', { dateFrom: '2024-01-01' });
-    expect(result).toEqual([{ date: '2024-01-01', likes: 10 }]);
+    expect(result).toEqual({ data: [{ date: '2024-01-01', likes: 10 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/analytics/post-timeline');
     expect(url).toContain('postId=p1');
@@ -319,7 +319,7 @@ describe('LateApiClient — method coverage', () => {
   it('getYouTubeDailyViews sends GET /analytics/youtube-daily-views', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { views: [{ date: '2024-01-01', count: 1000 }] }));
     const result = await client.getYouTubeDailyViews('vid1');
-    expect(result).toEqual([{ date: '2024-01-01', count: 1000 }]);
+    expect(result).toEqual({ data: [{ date: '2024-01-01', count: 1000 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('videoId=vid1');
   });
@@ -345,7 +345,7 @@ describe('LateApiClient — method coverage', () => {
   it('listConversations sends GET /inbox/conversations', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { conversations: [{ id: 'c1' }] }));
     const result = await client.listConversations({ platform: 'instagram', limit: 5 });
-    expect(result).toEqual([{ id: 'c1' }]);
+    expect(result).toEqual({ data: [{ id: 'c1' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/inbox/conversations');
     expect(url).toContain('platform=instagram');
@@ -363,7 +363,7 @@ describe('LateApiClient — method coverage', () => {
   it('listMessages sends GET /inbox/conversations/:id/messages', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { messages: [{ id: 'm1', text: 'hi' }] }));
     const result = await client.listMessages('c1', 'acc1', { limit: 10 });
-    expect(result).toEqual([{ id: 'm1', text: 'hi' }]);
+    expect(result).toEqual({ data: [{ id: 'm1', text: 'hi' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/inbox/conversations/c1/messages');
     expect(url).toContain('accountId=acc1');
@@ -372,7 +372,7 @@ describe('LateApiClient — method coverage', () => {
   it('listCommentedPosts sends GET /inbox/comments', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { posts: [{ id: 'p1' }] }));
     const result = await client.listCommentedPosts({ platform: 'instagram' });
-    expect(result).toEqual([{ id: 'p1' }]);
+    expect(result).toEqual({ data: [{ id: 'p1' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/inbox/comments');
   });
@@ -380,7 +380,7 @@ describe('LateApiClient — method coverage', () => {
   it('getPostComments sends GET /inbox/comments/:postId', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { comments: [{ id: 'cm1', text: 'nice' }] }));
     const result = await client.getPostComments('p1', { accountId: 'acc1' });
-    expect(result).toEqual([{ id: 'cm1', text: 'nice' }]);
+    expect(result).toEqual({ data: [{ id: 'cm1', text: 'nice' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/inbox/comments/p1');
   });
@@ -388,7 +388,7 @@ describe('LateApiClient — method coverage', () => {
   it('listReviews sends GET /inbox/reviews', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { reviews: [{ id: 'r1', rating: 5 }] }));
     const result = await client.listReviews({ platform: 'google-business' });
-    expect(result).toEqual([{ id: 'r1', rating: 5 }]);
+    expect(result).toEqual({ data: [{ id: 'r1', rating: 5 }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/inbox/reviews');
   });
@@ -404,7 +404,7 @@ describe('LateApiClient — method coverage', () => {
   it('listPublishingLogs sends GET /logs/publishing with query params', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { logs: [{ id: 'l1', status: 'success' }] }));
     const result = await client.listPublishingLogs({ status: 'success', limit: 5 });
-    expect(result).toEqual([{ id: 'l1', status: 'success' }]);
+    expect(result).toEqual({ data: [{ id: 'l1', status: 'success' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/logs/publishing');
     expect(url).toContain('status=success');
@@ -413,7 +413,7 @@ describe('LateApiClient — method coverage', () => {
   it('listConnectionLogs sends GET /logs/connections', async () => {
     fetchSpy.mockResolvedValueOnce(mockFetchResponse(200, { logs: [{ id: 'l2', platform: 'twitter' }] }));
     const result = await client.listConnectionLogs({ platform: 'twitter' });
-    expect(result).toEqual([{ id: 'l2', platform: 'twitter' }]);
+    expect(result).toEqual({ data: [{ id: 'l2', platform: 'twitter' }] });
     const [url] = fetchSpy.mock.calls[0] as [string];
     expect(url).toContain('/logs/connections');
   });
