@@ -93,7 +93,7 @@ server.tool(
 
       // Fetch existing scheduled posts to check for conflicts
       const apiPlatform = toApiPlatform(normalized);
-      const postList = await getClient().listPosts({
+      const { data: postList } = await getClient().listPosts({
         status: 'scheduled',
         platform: apiPlatform,
         limit: 100,
@@ -213,7 +213,7 @@ server.tool(
     try {
       const lookAhead = days ?? 7;
 
-      const postList = await getClient().listPosts({ status: 'scheduled', limit: 200 });
+      const { data: postList } = await getClient().listPosts({ status: 'scheduled', limit: 200 });
 
       const config = loadScheduleConfig();
       const timezone = config?.timezone ?? 'UTC';

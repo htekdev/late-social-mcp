@@ -1,6 +1,6 @@
 import { server } from '../../mcpServer.js';
 import { getClient, toApiPlatform } from '../../client/lateClient.js';
-import { textResponse, errorResponse } from '../../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../../types/tools.js';
 import { z } from 'zod';
 
 // ── list_conversations ──────────────────────────────────────────────────────
@@ -17,7 +17,7 @@ server.tool(
   async ({ profileId, platform, limit, page }) => {
     try {
       const client = getClient();
-      const items = await client.listConversations({
+      const { data: items, pagination } = await client.listConversations({
         profileId,
         platform: platform ? toApiPlatform(platform) : undefined,
         limit,
@@ -41,7 +41,7 @@ server.tool(
         lines.push('─'.repeat(60));
       }
 
-      lines.push(`\nTotal conversations: ${items.length}`);
+      lines.push(`\nTotal conversations: ${items.length}${formatPaginationFooter(pagination, items.length)}`);
       return textResponse(lines.join('\n'));
     } catch (err) {
       return errorResponse(`Failed to list conversations: ${err instanceof Error ? err.message : String(err)}`);
@@ -100,7 +100,7 @@ server.tool(
   async ({ conversationId, accountId, limit, page }) => {
     try {
       const client = getClient();
-      const items = await client.listMessages(conversationId, accountId, { limit, page });
+      const { data: items, pagination } = await client.listMessages(conversationId, accountId, { limit, page });
 
       if (!items || items.length === 0) {
         return textResponse(`No messages found in conversation ${conversationId}.`);
@@ -125,7 +125,7 @@ server.tool(
         lines.push('─'.repeat(60));
       }
 
-      lines.push(`\nTotal messages: ${items.length}`);
+      lines.push(`\nTotal messages: ${items.length}${formatPaginationFooter(pagination, items.length)}`);
       return textResponse(lines.join('\n'));
     } catch (err) {
       return errorResponse(`Failed to list messages: ${err instanceof Error ? err.message : String(err)}`);

@@ -83,14 +83,14 @@ export interface MockLateApiClient {
 export function createMockClient(): MockLateApiClient {
   return {
     // Profiles & Accounts
-    listProfiles: vi.fn().mockResolvedValue([]),
-    listAccounts: vi.fn().mockResolvedValue([]),
+    listProfiles: vi.fn().mockResolvedValue({ data: [] }),
+    listAccounts: vi.fn().mockResolvedValue({ data: [] }),
     getAccountHealth: vi.fn().mockResolvedValue({}),
     getAllAccountsHealth: vi.fn().mockResolvedValue([]),
     getUsageStats: vi.fn().mockResolvedValue({}),
 
     // Posts
-    listPosts: vi.fn().mockResolvedValue([]),
+    listPosts: vi.fn().mockResolvedValue({ data: [] }),
     getPost: vi.fn().mockResolvedValue({}),
     createPost: vi.fn().mockResolvedValue({}),
     updatePost: vi.fn().mockResolvedValue({}),
@@ -99,11 +99,11 @@ export function createMockClient(): MockLateApiClient {
     unpublishPost: vi.fn().mockResolvedValue(undefined),
 
     // Analytics
-    getAnalytics: vi.fn().mockResolvedValue([]),
-    getDailyMetrics: vi.fn().mockResolvedValue([]),
-    getFollowerStats: vi.fn().mockResolvedValue([]),
-    getPostTimeline: vi.fn().mockResolvedValue([]),
-    getYouTubeDailyViews: vi.fn().mockResolvedValue([]),
+    getAnalytics: vi.fn().mockResolvedValue({ data: [] }),
+    getDailyMetrics: vi.fn().mockResolvedValue({ data: [] }),
+    getFollowerStats: vi.fn().mockResolvedValue({ data: [] }),
+    getPostTimeline: vi.fn().mockResolvedValue({ data: [] }),
+    getYouTubeDailyViews: vi.fn().mockResolvedValue({ data: [] }),
 
     // Queue
     listQueues: vi.fn().mockResolvedValue([]),
@@ -113,15 +113,15 @@ export function createMockClient(): MockLateApiClient {
     previewQueueSlots: vi.fn().mockResolvedValue([]),
 
     // Engagement: Messages
-    listConversations: vi.fn().mockResolvedValue([]),
+    listConversations: vi.fn().mockResolvedValue({ data: [] }),
     getConversation: vi.fn().mockResolvedValue({}),
-    listMessages: vi.fn().mockResolvedValue([]),
+    listMessages: vi.fn().mockResolvedValue({ data: [] }),
     sendMessage: vi.fn().mockResolvedValue({}),
     editMessage: vi.fn().mockResolvedValue(undefined),
 
     // Engagement: Comments
-    listCommentedPosts: vi.fn().mockResolvedValue([]),
-    getPostComments: vi.fn().mockResolvedValue([]),
+    listCommentedPosts: vi.fn().mockResolvedValue({ data: [] }),
+    getPostComments: vi.fn().mockResolvedValue({ data: [] }),
     replyToComment: vi.fn().mockResolvedValue({}),
     deleteComment: vi.fn().mockResolvedValue(undefined),
     hideComment: vi.fn().mockResolvedValue(undefined),
@@ -129,7 +129,7 @@ export function createMockClient(): MockLateApiClient {
     sendPrivateReply: vi.fn().mockResolvedValue({}),
 
     // Engagement: Reviews
-    listReviews: vi.fn().mockResolvedValue([]),
+    listReviews: vi.fn().mockResolvedValue({ data: [] }),
     replyToReview: vi.fn().mockResolvedValue({}),
     deleteReviewReply: vi.fn().mockResolvedValue(undefined),
 
@@ -147,9 +147,9 @@ export function createMockClient(): MockLateApiClient {
     testWebhook: vi.fn().mockResolvedValue({}),
 
     // Logs
-    getPostLogs: vi.fn().mockResolvedValue([]),
-    listPublishingLogs: vi.fn().mockResolvedValue([]),
-    listConnectionLogs: vi.fn().mockResolvedValue([]),
+    getPostLogs: vi.fn().mockResolvedValue({ data: [] }),
+    listPublishingLogs: vi.fn().mockResolvedValue({ data: [] }),
+    listConnectionLogs: vi.fn().mockResolvedValue({ data: [] }),
   };
 }
 

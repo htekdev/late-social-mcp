@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { server } from '../mcpServer.js';
 import { getClient, toApiPlatform } from '../client/lateClient.js';
-import { textResponse, errorResponse } from '../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../types/tools.js';
 import type { CreatePostBody, UpdatePostBody } from '../types/api.js';
 
 function truncate(text: string, maxLen: number): string {
@@ -89,7 +89,7 @@ server.tool(
       if (limit) query.limit = limit;
       if (page) query.page = page;
 
-      const postList = await client.listPosts(query);
+      const { data: postList, pagination } = await client.listPosts(query);
 
       if (postList.length === 0) {
         const filters: string[] = [];
@@ -111,6 +111,7 @@ server.tool(
         if (i < postList.length - 1) lines.push('');
       }
 
+      lines.push(formatPaginationFooter(pagination, postList.length));
       return textResponse(lines.join('\n'));
     } catch (err: unknown) {
       return errorResponse(`Failed to list posts: ${err instanceof Error ? err.message : String(err)}`);

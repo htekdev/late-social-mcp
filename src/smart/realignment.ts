@@ -51,7 +51,7 @@ async function fetchAllPosts(
   const apiPlatform = platform ? toApiPlatform(platform) : undefined;
 
   for (const status of statuses) {
-    const posts = await client.listPosts({ status, platform: apiPlatform, limit: 200 });
+    const { data: posts } = await client.listPosts({ status, platform: apiPlatform, limit: 200 });
 
     for (const p of posts) {
       const platforms = p.platforms?.map((pl) =>

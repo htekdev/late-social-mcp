@@ -1,6 +1,6 @@
 import { server } from '../../mcpServer.js';
 import { getClient, toApiPlatform } from '../../client/lateClient.js';
-import { textResponse, errorResponse } from '../../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../../types/tools.js';
 import { z } from 'zod';
 
 // ── list_commented_posts ────────────────────────────────────────────────────
@@ -12,14 +12,16 @@ server.tool(
     profileId: z.string().optional().describe('Filter by profile ID'),
     platform: z.string().optional().describe('Filter by platform (e.g. instagram, facebook)'),
     limit: z.number().optional().describe('Max results to return'),
+    page: z.number().optional().describe('Page number for pagination'),
   },
-  async ({ profileId, platform, limit }) => {
+  async ({ profileId, platform, limit, page }) => {
     try {
       const client = getClient();
-      const items = await client.listCommentedPosts({
+      const { data: items, pagination } = await client.listCommentedPosts({
         profileId,
         platform: platform ? toApiPlatform(platform) : undefined,
         limit,
+        page,
       });
 
       if (!items || items.length === 0) {
@@ -39,7 +41,7 @@ server.tool(
         lines.push('─'.repeat(60));
       }
 
-      lines.push(`\nTotal posts with comments: ${items.length}`);
+      lines.push(`\nTotal posts with comments: ${items.length}${formatPaginationFooter(pagination, items.length)}`);
       return textResponse(lines.join('\n'));
     } catch (err) {
       return errorResponse(`Failed to list commented posts: ${err instanceof Error ? err.message : String(err)}`);
@@ -56,11 +58,12 @@ server.tool(
     postId: z.string().describe('The post ID to get comments for'),
     accountId: z.string().optional().describe('Filter by account ID'),
     limit: z.number().optional().describe('Max comments to return'),
+    page: z.number().optional().describe('Page number for pagination'),
   },
-  async ({ postId, accountId, limit }) => {
+  async ({ postId, accountId, limit, page }) => {
     try {
       const client = getClient();
-      const items = await client.getPostComments(postId, { accountId, limit });
+      const { data: items, pagination } = await client.getPostComments(postId, { accountId, limit, page });
 
       if (!items || items.length === 0) {
         return textResponse(`No comments found for post ${postId}.`);
@@ -86,7 +89,7 @@ server.tool(
         lines.push('─'.repeat(60));
       }
 
-      lines.push(`\nTotal comments: ${items.length}`);
+      lines.push(`\nTotal comments: ${items.length}${formatPaginationFooter(pagination, items.length)}`);
       return textResponse(lines.join('\n'));
     } catch (err) {
       return errorResponse(`Failed to get post comments: ${err instanceof Error ? err.message : String(err)}`);

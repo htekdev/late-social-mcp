@@ -272,10 +272,10 @@ describe('detectConflicts', () => {
 
   it('detects duplicate time slot conflicts', async () => {
     const scheduledFor = '2025-06-16T14:00:00Z';
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
       { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-    ]);
+    ] });
 
     const report = await detectConflicts('x');
 
@@ -287,9 +287,9 @@ describe('detectConflicts', () => {
     const saturday = getNextWeekday('sat');
     const saturdayIso = saturday.toISOString();
 
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { _id: 'p1', scheduledFor: saturdayIso, platforms: ['twitter'], content: 'Weekend post', status: 'scheduled' },
-    ]);
+    ] });
 
     const report = await detectConflicts('x');
 
@@ -309,9 +309,9 @@ describe('detectConflicts', () => {
     const monday = getNextWeekday('mon');
     monday.setUTCHours(3, 30, 0, 0); // 03:30 UTC → 22:30 CDT previous day or unusual time
 
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { _id: 'p1', scheduledFor: monday.toISOString(), platforms: ['twitter'], content: 'Odd time', status: 'scheduled' },
-    ]);
+    ] });
 
     const report = await detectConflicts('x');
 
@@ -346,10 +346,10 @@ describe('autoResolveConflicts', () => {
 
   it('creates a resolve plan for duplicate-time conflicts', async () => {
     const scheduledFor = '2025-06-16T14:00:00Z';
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
       { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-    ]);
+    ] });
 
     const result = await autoResolveConflicts('x', false);
 
@@ -365,10 +365,10 @@ describe('autoResolveConflicts', () => {
 
   it('executes moves when execute=true', async () => {
     const scheduledFor = '2025-06-16T14:00:00Z';
-    mockClient.listPosts.mockResolvedValue([
+    mockClient.listPosts.mockResolvedValue({ data: [
       { _id: 'p1', scheduledFor, platforms: ['twitter'], content: 'Post 1', status: 'scheduled' },
       { _id: 'p2', scheduledFor, platforms: ['twitter'], content: 'Post 2', status: 'scheduled' },
-    ]);
+    ] });
     mockClient.updatePost.mockResolvedValue({});
 
     const result = await autoResolveConflicts('x', true);
@@ -388,7 +388,7 @@ describe('getBestTimesToPost', () => {
   });
 
   it('returns best times from analytics API', async () => {
-    mockClient.getAnalytics.mockResolvedValue([
+    mockClient.getAnalytics.mockResolvedValue({ data: [
       {
         platform: 'instagram',
         bestTimes: [
@@ -396,7 +396,7 @@ describe('getBestTimesToPost', () => {
           { day: 'Wednesday', hour: 14, engagement: 88 },
         ],
       },
-    ]);
+    ] });
 
     const results = await getBestTimesToPost('instagram');
 
@@ -430,14 +430,14 @@ describe('getPostingFrequency', () => {
   });
 
   it('returns frequency analysis with recommendation', async () => {
-    mockClient.getAnalytics.mockResolvedValue([
+    mockClient.getAnalytics.mockResolvedValue({ data: [
       {
         platform: 'x',
         currentFrequency: 3,
         optimalFrequency: 7,
         engagementCorrelation: 0.85,
       },
-    ]);
+    ] });
 
     const results = await getPostingFrequency('x');
 
@@ -448,14 +448,14 @@ describe('getPostingFrequency', () => {
   });
 
   it('recommends maintaining frequency when current matches optimal', async () => {
-    mockClient.getAnalytics.mockResolvedValue([
+    mockClient.getAnalytics.mockResolvedValue({ data: [
       {
         platform: 'instagram',
         currentFrequency: 5,
         optimalFrequency: 5,
         engagementCorrelation: 0.9,
       },
-    ]);
+    ] });
 
     const results = await getPostingFrequency('instagram');
 
@@ -463,14 +463,14 @@ describe('getPostingFrequency', () => {
   });
 
   it('recommends reducing when current is too high', async () => {
-    mockClient.getAnalytics.mockResolvedValue([
+    mockClient.getAnalytics.mockResolvedValue({ data: [
       {
         platform: 'x',
         currentFrequency: 14,
         optimalFrequency: 5,
         engagementCorrelation: 0.6,
       },
-    ]);
+    ] });
 
     const results = await getPostingFrequency('x');
 
@@ -495,11 +495,11 @@ describe('getContentDecay', () => {
   });
 
   it('returns decay analysis for a specific post', async () => {
-    mockClient.getPostTimeline.mockResolvedValue([
+    mockClient.getPostTimeline.mockResolvedValue({ data: [
       { date: '2025-06-10T10:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
       { date: '2025-06-10T14:00:00Z', likes: 80, comments: 20, shares: 10, impressions: 400 },
       { date: '2025-06-11T09:00:00Z', likes: 30, comments: 5, shares: 2, impressions: 100 },
-    ]);
+    ] });
 
     const results = await getContentDecay('post123', 'instagram');
 
@@ -510,10 +510,10 @@ describe('getContentDecay', () => {
   });
 
   it('calculates half-life when enough data exists', async () => {
-    mockClient.getPostTimeline.mockResolvedValue([
+    mockClient.getPostTimeline.mockResolvedValue({ data: [
       { date: '2025-06-10T10:00:00Z', likes: 100, comments: 50, shares: 25, impressions: 500 },
       { date: '2025-06-10T15:00:00Z', likes: 50, comments: 10, shares: 5, impressions: 200 },
-    ]);
+    ] });
 
     const results = await getContentDecay('post456', 'x');
 
@@ -531,10 +531,10 @@ describe('getContentDecay', () => {
   });
 
   it('computes cumulative engagement percentages', async () => {
-    mockClient.getPostTimeline.mockResolvedValue([
+    mockClient.getPostTimeline.mockResolvedValue({ data: [
       { date: '2025-06-10T10:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
       { date: '2025-06-10T12:00:00Z', likes: 10, comments: 0, shares: 0, impressions: 40 },
-    ]);
+    ] });
 
     const results = await getContentDecay('post789', 'instagram');
 

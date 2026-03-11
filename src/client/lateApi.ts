@@ -10,6 +10,7 @@ import type {
   LatePresignResult, LateValidationResult, LatePostLengthResult, LateHashtagResult,
   LateWebhook, LateWebhookTestResult,
   LateLog,
+  PaginationMeta, PaginatedResult,
 } from '../types/api.js';
 
 const BASE_URL = 'https://getlate.dev/api/v1';
@@ -73,27 +74,38 @@ export class LateApiClient {
     throw lastError ?? new Error('Late API error: max retries exceeded');
   }
 
-  /** Extract an array from a wrapped response like { posts: [...], pagination: {...} } */
-  private extractArray<T>(data: unknown): T[] {
-    if (Array.isArray(data)) return data;
+  /** Extract an array and optional pagination metadata from a wrapped response */
+  private extractPaginated<T>(data: unknown): PaginatedResult<T> {
+    if (Array.isArray(data)) return { data };
     if (data && typeof data === 'object') {
-      for (const val of Object.values(data as Record<string, unknown>)) {
-        if (Array.isArray(val)) return val as T[];
+      const obj = data as Record<string, unknown>;
+      let items: T[] = [];
+      let pagination: PaginationMeta | undefined;
+
+      for (const [key, val] of Object.entries(obj)) {
+        if (Array.isArray(val) && items.length === 0) {
+          items = val as T[];
+        }
+        if (key === 'pagination' && val && typeof val === 'object') {
+          pagination = val as PaginationMeta;
+        }
       }
+
+      return { data: items, pagination };
     }
-    return [];
+    return { data: [] };
   }
 
   // ─── Profiles & Accounts ──────────────────────────────────────────────────
 
-  async listProfiles(): Promise<LateProfile[]> {
-    const data = await this.request<unknown>('GET', '/profiles');
-    return this.extractArray<LateProfile>(data);
+  async listProfiles(opts?: { limit?: number; page?: number }): Promise<PaginatedResult<LateProfile>> {
+    const data = await this.request<unknown>('GET', '/profiles', { query: opts as Record<string, number | undefined> });
+    return this.extractPaginated<LateProfile>(data);
   }
 
-  async listAccounts(opts?: { platform?: string; profileId?: string }): Promise<LateAccount[]> {
-    const data = await this.request<unknown>('GET', '/accounts', { query: opts as Record<string, string | undefined> });
-    return this.extractArray<LateAccount>(data);
+  async listAccounts(opts?: { platform?: string; profileId?: string; limit?: number; page?: number }): Promise<PaginatedResult<LateAccount>> {
+    const data = await this.request<unknown>('GET', '/accounts', { query: opts as Record<string, string | number | undefined> });
+    return this.extractPaginated<LateAccount>(data);
   }
 
   async getAccountHealth(accountId: string): Promise<LateAccountHealth> {
@@ -101,8 +113,8 @@ export class LateApiClient {
   }
 
   async getAllAccountsHealth(): Promise<LateAccountHealth[]> {
-    const data = await this.request<unknown>('GET', '/accounts/health');
-    return this.extractArray<LateAccountHealth>(data);
+    const result = await this.request<unknown>('GET', '/accounts/health');
+    return this.extractPaginated<LateAccountHealth>(result).data;
   }
 
   async getUsageStats(): Promise<LateUsage> {
@@ -113,14 +125,13 @@ export class LateApiClient {
 
   async listPosts(opts?: {
     status?: string; platform?: string; search?: string; limit?: number; page?: number;
-  }): Promise<LatePost[]> {
+  }): Promise<PaginatedResult<LatePost>> {
     const data = await this.request<unknown>('GET', '/posts', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LatePost>(data);
+    return this.extractPaginated<LatePost>(data);
   }
 
   async getPost(postId: string): Promise<LatePost> {
     const data = await this.request<unknown>('GET', `/posts/${postId}`);
-    // May be wrapped in { post: {...} }
     if (data && typeof data === 'object' && 'post' in data) {
       return (data as Record<string, unknown>).post as LatePost;
     }
@@ -162,47 +173,47 @@ export class LateApiClient {
   // ─── Analytics ────────────────────────────────────────────────────────────
 
   async getAnalytics(opts?: {
-    postId?: string; fromDate?: string; toDate?: string; platform?: string; limit?: number;
-  }): Promise<LateAnalyticsEntry[]> {
+    postId?: string; fromDate?: string; toDate?: string; platform?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateAnalyticsEntry>> {
     const data = await this.request<unknown>('GET', '/analytics', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateAnalyticsEntry>(data);
+    return this.extractPaginated<LateAnalyticsEntry>(data);
   }
 
   async getDailyMetrics(opts?: {
-    dateFrom?: string; dateTo?: string; platforms?: string; limit?: number;
-  }): Promise<LateDailyMetric[]> {
+    dateFrom?: string; dateTo?: string; platforms?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateDailyMetric>> {
     const data = await this.request<unknown>('GET', '/analytics/daily', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateDailyMetric>(data);
+    return this.extractPaginated<LateDailyMetric>(data);
   }
 
   async getFollowerStats(opts?: {
-    dateFrom?: string; dateTo?: string; accountId?: string; limit?: number;
-  }): Promise<LateFollowerStat[]> {
+    dateFrom?: string; dateTo?: string; accountId?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateFollowerStat>> {
     const data = await this.request<unknown>('GET', '/accounts/followers', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateFollowerStat>(data);
+    return this.extractPaginated<LateFollowerStat>(data);
   }
 
   async getPostTimeline(postId: string, opts?: {
-    dateFrom?: string; dateTo?: string;
-  }): Promise<LateTimelineEntry[]> {
-    const query = { postId, ...opts } as Record<string, string | undefined>;
+    dateFrom?: string; dateTo?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateTimelineEntry>> {
+    const query = { postId, ...opts } as Record<string, string | number | undefined>;
     const data = await this.request<unknown>('GET', '/analytics/post-timeline', { query });
-    return this.extractArray<LateTimelineEntry>(data);
+    return this.extractPaginated<LateTimelineEntry>(data);
   }
 
   async getYouTubeDailyViews(videoId: string, opts?: {
-    dateFrom?: string; dateTo?: string;
-  }): Promise<LateYouTubeView[]> {
-    const query = { videoId, ...opts } as Record<string, string | undefined>;
+    dateFrom?: string; dateTo?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateYouTubeView>> {
+    const query = { videoId, ...opts } as Record<string, string | number | undefined>;
     const data = await this.request<unknown>('GET', '/analytics/youtube-daily-views', { query });
-    return this.extractArray<LateYouTubeView>(data);
+    return this.extractPaginated<LateYouTubeView>(data);
   }
 
   // ─── Queue ────────────────────────────────────────────────────────────────
 
   async listQueues(profileId: string): Promise<LateQueue[]> {
-    const data = await this.request<unknown>('GET', '/queue', { query: { profileId, all: true } });
-    return this.extractArray<LateQueue>(data);
+    const result = await this.request<unknown>('GET', '/queue', { query: { profileId, all: true } });
+    return this.extractPaginated<LateQueue>(result).data;
   }
 
   async createQueue(body: CreateQueueBody): Promise<void> {
@@ -221,17 +232,17 @@ export class LateApiClient {
     count?: number; queueId?: string;
   }): Promise<LateQueueSlot[]> {
     const query = { profileId, ...opts } as Record<string, string | number | undefined>;
-    const data = await this.request<unknown>('GET', '/queue/preview', { query });
-    return this.extractArray<LateQueueSlot>(data);
+    const result = await this.request<unknown>('GET', '/queue/preview', { query });
+    return this.extractPaginated<LateQueueSlot>(result).data;
   }
 
   // ─── Engagement: Messages ─────────────────────────────────────────────────
 
   async listConversations(opts?: {
     profileId?: string; platform?: string; limit?: number; page?: number;
-  }): Promise<LateConversation[]> {
+  }): Promise<PaginatedResult<LateConversation>> {
     const data = await this.request<unknown>('GET', '/inbox/conversations', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateConversation>(data);
+    return this.extractPaginated<LateConversation>(data);
   }
 
   async getConversation(conversationId: string, accountId: string): Promise<LateConversation> {
@@ -242,10 +253,10 @@ export class LateApiClient {
 
   async listMessages(conversationId: string, accountId: string, opts?: {
     limit?: number; page?: number;
-  }): Promise<LateMessage[]> {
+  }): Promise<PaginatedResult<LateMessage>> {
     const query = { accountId, ...opts } as Record<string, string | number | undefined>;
     const data = await this.request<unknown>('GET', `/inbox/conversations/${conversationId}/messages`, { query });
-    return this.extractArray<LateMessage>(data);
+    return this.extractPaginated<LateMessage>(data);
   }
 
   async sendMessage(conversationId: string, accountId: string, message: string): Promise<LateSendResult> {
@@ -263,17 +274,17 @@ export class LateApiClient {
   // ─── Engagement: Comments ─────────────────────────────────────────────────
 
   async listCommentedPosts(opts?: {
-    profileId?: string; platform?: string; limit?: number;
-  }): Promise<LateCommentedPost[]> {
+    profileId?: string; platform?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateCommentedPost>> {
     const data = await this.request<unknown>('GET', '/inbox/comments', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateCommentedPost>(data);
+    return this.extractPaginated<LateCommentedPost>(data);
   }
 
   async getPostComments(postId: string, opts?: {
-    accountId?: string; limit?: number;
-  }): Promise<LateComment[]> {
+    accountId?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateComment>> {
     const data = await this.request<unknown>('GET', `/inbox/comments/${postId}`, { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateComment>(data);
+    return this.extractPaginated<LateComment>(data);
   }
 
   async replyToComment(postId: string, accountId: string, commentId: string, message: string): Promise<LateSendResult> {
@@ -303,10 +314,10 @@ export class LateApiClient {
   // ─── Engagement: Reviews ──────────────────────────────────────────────────
 
   async listReviews(opts?: {
-    accountId?: string; platform?: string; limit?: number;
-  }): Promise<LateReview[]> {
+    accountId?: string; platform?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateReview>> {
     const data = await this.request<unknown>('GET', '/inbox/reviews', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateReview>(data);
+    return this.extractPaginated<LateReview>(data);
   }
 
   async replyToReview(reviewId: string, accountId: string, message: string): Promise<LateSendResult> {
@@ -356,8 +367,8 @@ export class LateApiClient {
   // ─── Webhooks ─────────────────────────────────────────────────────────────
 
   async listWebhooks(): Promise<LateWebhook[]> {
-    const data = await this.request<unknown>('GET', '/webhooks');
-    return this.extractArray<LateWebhook>(data);
+    const result = await this.request<unknown>('GET', '/webhooks');
+    return this.extractPaginated<LateWebhook>(result).data;
   }
 
   async createWebhook(url: string, events: string[], name?: string): Promise<LateWebhook> {
@@ -382,23 +393,25 @@ export class LateApiClient {
 
   // ─── Logs ─────────────────────────────────────────────────────────────────
 
-  async getPostLogs(postId: string): Promise<LateLog[]> {
-    const data = await this.request<unknown>('GET', `/logs/posts/${postId}`);
-    return this.extractArray<LateLog>(data);
+  async getPostLogs(postId: string, opts?: {
+    limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateLog>> {
+    const data = await this.request<unknown>('GET', `/logs/posts/${postId}`, { query: opts as Record<string, number | undefined> });
+    return this.extractPaginated<LateLog>(data);
   }
 
   async listPublishingLogs(opts?: {
-    status?: string; platform?: string; action?: string; limit?: number;
-  }): Promise<LateLog[]> {
+    status?: string; platform?: string; action?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateLog>> {
     const data = await this.request<unknown>('GET', '/logs/publishing', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateLog>(data);
+    return this.extractPaginated<LateLog>(data);
   }
 
   async listConnectionLogs(opts?: {
-    platform?: string; status?: string; limit?: number;
-  }): Promise<LateLog[]> {
+    platform?: string; status?: string; limit?: number; page?: number;
+  }): Promise<PaginatedResult<LateLog>> {
     const data = await this.request<unknown>('GET', '/logs/connections', { query: opts as Record<string, string | number | undefined> });
-    return this.extractArray<LateLog>(data);
+    return this.extractPaginated<LateLog>(data);
   }
 }
 

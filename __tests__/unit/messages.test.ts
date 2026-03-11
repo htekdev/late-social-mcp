@@ -52,9 +52,9 @@ describe('list_conversations', () => {
   });
 
   it('returns formatted conversation list', async () => {
-    mockClient.listConversations.mockResolvedValue([
+    mockClient.listConversations.mockResolvedValue({ data: [
       { id: 'c1', platform: 'instagram', participantName: 'Alice', lastMessage: 'Hey there!', unreadCount: 2 },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_conversations');
     const result = await handler({});
@@ -67,7 +67,7 @@ describe('list_conversations', () => {
   });
 
   it('returns empty message when no conversations', async () => {
-    mockClient.listConversations.mockResolvedValue([]);
+    mockClient.listConversations.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('list_conversations');
     const result = await handler({});
@@ -120,10 +120,10 @@ describe('list_messages', () => {
   });
 
   it('returns formatted message list', async () => {
-    mockClient.listMessages.mockResolvedValue([
+    mockClient.listMessages.mockResolvedValue({ data: [
       { id: 'm1', senderName: 'Alice', message: 'Hello!', sentAt: '2024-06-01T10:00:00Z', isOutgoing: false },
       { id: 'm2', senderName: 'Me', message: 'Hi Alice!', sentAt: '2024-06-01T10:05:00Z', isOutgoing: true },
-    ]);
+    ] });
 
     const handler = getToolHandler('list_messages');
     const result = await handler({ conversationId: 'c1', accountId: 'a1' });

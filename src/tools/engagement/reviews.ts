@@ -1,6 +1,6 @@
 import { server } from '../../mcpServer.js';
 import { getClient, toApiPlatform } from '../../client/lateClient.js';
-import { textResponse, errorResponse } from '../../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../../types/tools.js';
 import { z } from 'zod';
 
 // ── list_reviews ────────────────────────────────────────────────────────────
@@ -12,14 +12,16 @@ server.tool(
     accountId: z.string().optional().describe('Filter by account ID'),
     platform: z.string().optional().describe('Filter by platform (e.g. google-business, facebook)'),
     limit: z.number().optional().describe('Max results to return'),
+    page: z.number().optional().describe('Page number for pagination'),
   },
-  async ({ accountId, platform, limit }) => {
+  async ({ accountId, platform, limit, page }) => {
     try {
       const client = getClient();
-      const items = await client.listReviews({
+      const { data: items, pagination } = await client.listReviews({
         accountId,
         platform: platform ? toApiPlatform(platform) : undefined,
         limit,
+        page,
       });
 
       if (!items || items.length === 0) {
@@ -42,7 +44,7 @@ server.tool(
         lines.push('─'.repeat(60));
       }
 
-      lines.push(`\nTotal reviews: ${items.length}`);
+      lines.push(`\nTotal reviews: ${items.length}${formatPaginationFooter(pagination, items.length)}`);
       return textResponse(lines.join('\n'));
     } catch (err) {
       return errorResponse(`Failed to list reviews: ${err instanceof Error ? err.message : String(err)}`);

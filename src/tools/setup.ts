@@ -24,8 +24,8 @@ server.tool(
       }
 
       const client = getClient();
-      const profileList = await client.listProfiles();
-      const accountList = await client.listAccounts();
+      const { data: profileList } = await client.listProfiles();
+      const { data: accountList } = await client.listAccounts();
 
       const config = loadConfig();
       config.lateApiKey = apiKey;
@@ -69,7 +69,7 @@ server.tool(
 
       const client = getClient();
 
-      const [profileList, accountList, usage] = await Promise.all([
+      const [{ data: profileList }, { data: accountList }, usage] = await Promise.all([
         client.listProfiles(),
         client.listAccounts(),
         client.getUsageStats(),

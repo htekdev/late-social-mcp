@@ -51,9 +51,9 @@ describe('get_post_analytics', () => {
   });
 
   it('returns formatted analytics data', async () => {
-    mockClient.getAnalytics.mockResolvedValue([
+    mockClient.getAnalytics.mockResolvedValue({ data: [
       { postId: 'p1', platform: 'instagram', impressions: 5000, reach: 3000, likes: 200, comments: 15, shares: 30 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_post_analytics');
     const result = await handler({ postId: 'p1' });
@@ -66,7 +66,7 @@ describe('get_post_analytics', () => {
   });
 
   it('returns empty message when no data', async () => {
-    mockClient.getAnalytics.mockResolvedValue([]);
+    mockClient.getAnalytics.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('get_post_analytics');
     const result = await handler({});
@@ -91,10 +91,10 @@ describe('get_daily_metrics', () => {
   });
 
   it('returns formatted daily metrics table', async () => {
-    mockClient.getDailyMetrics.mockResolvedValue([
+    mockClient.getDailyMetrics.mockResolvedValue({ data: [
       { date: '2024-06-01', impressions: 1200, reach: 800, likes: 50, comments: 10, shares: 5 },
       { date: '2024-06-02', impressions: 1500, reach: 900, likes: 60, comments: 12, shares: 8 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_daily_metrics');
     const result = await handler({ dateFrom: '2024-06-01', dateTo: '2024-06-02' });
@@ -107,7 +107,7 @@ describe('get_daily_metrics', () => {
   });
 
   it('handles comma-separated platforms', async () => {
-    mockClient.getDailyMetrics.mockResolvedValue([]);
+    mockClient.getDailyMetrics.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('get_daily_metrics');
     await handler({ platforms: 'instagram,x' });
@@ -122,9 +122,9 @@ describe('get_follower_stats', () => {
   });
 
   it('returns formatted follower stats', async () => {
-    mockClient.getFollowerStats.mockResolvedValue([
+    mockClient.getFollowerStats.mockResolvedValue({ data: [
       { accountId: 'a1', platform: 'instagram', followers: 10000, gained: 50, lost: 10, netChange: 40 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_follower_stats');
     const result = await handler({ accountId: 'a1' });
@@ -143,10 +143,10 @@ describe('get_post_timeline', () => {
   });
 
   it('returns formatted timeline data', async () => {
-    mockClient.getPostTimeline.mockResolvedValue([
+    mockClient.getPostTimeline.mockResolvedValue({ data: [
       { date: '2024-06-01T10:00', impressions: 100, likes: 5, comments: 2, shares: 1 },
       { date: '2024-06-01T12:00', impressions: 300, likes: 15, comments: 5, shares: 3 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_post_timeline');
     const result = await handler({ postId: 'p1' });
@@ -158,7 +158,7 @@ describe('get_post_timeline', () => {
   });
 
   it('handles empty timeline', async () => {
-    mockClient.getPostTimeline.mockResolvedValue([]);
+    mockClient.getPostTimeline.mockResolvedValue({ data: [] });
 
     const handler = getToolHandler('get_post_timeline');
     const result = await handler({ postId: 'p1' });
@@ -173,10 +173,10 @@ describe('get_youtube_daily_views', () => {
   });
 
   it('returns formatted YouTube views with totals', async () => {
-    mockClient.getYouTubeDailyViews.mockResolvedValue([
+    mockClient.getYouTubeDailyViews.mockResolvedValue({ data: [
       { date: '2024-06-01', views: 500 },
       { date: '2024-06-02', views: 750 },
-    ]);
+    ] });
 
     const handler = getToolHandler('get_youtube_daily_views');
     const result = await handler({ videoId: 'vid123' });

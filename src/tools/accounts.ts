@@ -1,20 +1,27 @@
 import { server } from '../mcpServer.js';
 import { getClient, toDisplayPlatform } from '../client/lateClient.js';
-import { textResponse, errorResponse } from '../types/tools.js';
+import { textResponse, errorResponse, formatPaginationFooter } from '../types/tools.js';
 import { z } from 'zod';
 
 server.tool(
   'list_accounts',
   'List connected social media accounts with platform, display name, username, and active status',
-  { platform: z.string().optional(), profileId: z.string().optional() },
-  async ({ platform, profileId }) => {
+  {
+    platform: z.string().optional(),
+    profileId: z.string().optional(),
+    limit: z.number().optional().describe('Max number of accounts to return (default: 20)'),
+    page: z.number().optional().describe('Page number for pagination'),
+  },
+  async ({ platform, profileId, limit, page }) => {
     try {
       const client = getClient();
-      const query: Record<string, string> = {};
+      const query: Record<string, string | number | undefined> = {};
       if (platform) query.platform = platform;
       if (profileId) query.profileId = profileId;
+      if (limit) query.limit = limit;
+      if (page) query.page = page;
 
-      const accounts = await client.listAccounts(query);
+      const { data: accounts, pagination } = await client.listAccounts(query);
 
       if (accounts.length === 0) {
         return textResponse('No connected accounts found.');
@@ -28,7 +35,7 @@ server.tool(
         return `${i + 1}. [${plat}] ${display} (@${user}) — ${active}`;
       });
 
-      return textResponse(`Connected Accounts (${accounts.length}):\n${lines.join('\n')}`);
+      return textResponse(`Connected Accounts (${accounts.length}):\n${lines.join('\n')}${formatPaginationFooter(pagination, accounts.length)}`);
     } catch (err: unknown) {
       return errorResponse(`Failed to list accounts: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -88,11 +95,14 @@ server.tool(
 server.tool(
   'list_profiles',
   'List all profiles with their id, name, color, and description',
-  {},
-  async () => {
+  {
+    limit: z.number().optional().describe('Max number of profiles to return (default: 20)'),
+    page: z.number().optional().describe('Page number for pagination'),
+  },
+  async ({ limit, page }) => {
     try {
       const client = getClient();
-      const profiles = await client.listProfiles();
+      const { data: profiles, pagination } = await client.listProfiles({ limit, page });
 
       if (profiles.length === 0) {
         return textResponse('No profiles found.');
@@ -102,7 +112,7 @@ server.tool(
         `${i + 1}. ${p.name ?? 'Unnamed'} (${p._id})\n   Color: ${p.color ?? 'N/A'}\n   Description: ${p.description ?? 'N/A'}`,
       );
 
-      return textResponse(`Profiles (${profiles.length}):\n${lines.join('\n\n')}`);
+      return textResponse(`Profiles (${profiles.length}):\n${lines.join('\n\n')}${formatPaginationFooter(pagination, profiles.length)}`);
     } catch (err: unknown) {
       return errorResponse(`Failed to list profiles: ${err instanceof Error ? err.message : String(err)}`);
     }

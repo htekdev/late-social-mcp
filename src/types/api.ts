@@ -344,6 +344,20 @@ export interface LateLog {
   accountId?: string;
 }
 
+// ─── Pagination ─────────────────────────────────────────────────────────────
+
+export interface PaginationMeta {
+  page?: number;
+  limit?: number;
+  total?: number;
+  totalPages?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination?: PaginationMeta;
+}
+
 // ─── API Response Wrappers (raw shapes from the Late API) ───────────────────
 
 export interface ListProfilesResponse {
