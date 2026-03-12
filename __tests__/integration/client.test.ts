@@ -120,8 +120,8 @@ describe('LateApiClient', () => {
     const client = new LateApiClient('my-key');
     const result = await client.createPost({
       content: 'hello',
-      platforms: ['twitter'],
-    } as Parameters<LateApiClient['createPost']>[0]);
+      platforms: [{ platform: 'twitter', accountId: 'acc-1', profileId: 'prof-1' }],
+    });
     expect(result).toEqual({ id: 'p1', content: 'hello' });
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('POST');

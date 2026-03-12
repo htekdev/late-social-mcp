@@ -12,6 +12,7 @@ export interface MockLateApiClient {
   getAccountHealth: ReturnType<typeof vi.fn>;
   getAllAccountsHealth: ReturnType<typeof vi.fn>;
   getUsageStats: ReturnType<typeof vi.fn>;
+  resolvePlatforms: ReturnType<typeof vi.fn>;
 
   // Posts
   listPosts: ReturnType<typeof vi.fn>;
@@ -88,6 +89,7 @@ export function createMockClient(): MockLateApiClient {
     getAccountHealth: vi.fn().mockResolvedValue({}),
     getAllAccountsHealth: vi.fn().mockResolvedValue([]),
     getUsageStats: vi.fn().mockResolvedValue({}),
+    resolvePlatforms: vi.fn().mockResolvedValue([]),
 
     // Posts
     listPosts: vi.fn().mockResolvedValue({ data: [] }),

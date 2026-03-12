@@ -160,9 +160,11 @@ server.tool(
         return errorResponse('At least one platform is required. Example: twitter, instagram');
       }
 
+      const resolvedPlatforms = await client.resolvePlatforms(platformList);
+
       const body: CreatePostBody = {
         content,
-        platforms: platformList,
+        platforms: resolvedPlatforms,
       };
       if (scheduledFor) body.scheduledFor = scheduledFor;
       if (publishNow !== undefined) body.publishNow = publishNow;
@@ -183,7 +185,7 @@ server.tool(
         '',
         `ID: ${created._id}`,
         `Status: ${created.status}`,
-        `Platforms: ${platformList.join(', ')}`,
+        `Platforms: ${resolvedPlatforms.map((p) => p.platform).join(', ')}`,
       ];
 
       if (scheduledFor) {
@@ -419,9 +421,10 @@ server.tool(
       for (let i = 0; i < parsedRows.length; i++) {
         const row = parsedRows[i];
         try {
+          const resolvedPlatforms = await client.resolvePlatforms(row.platforms);
           const body: CreatePostBody = {
             content: row.content,
-            platforms: row.platforms,
+            platforms: resolvedPlatforms,
           };
           if (row.scheduledFor) body.scheduledFor = row.scheduledFor;
 

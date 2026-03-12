@@ -1,7 +1,7 @@
 import { getLateApiKey } from '../config/config.js';
 import type {
   LateProfile, LateAccount, LateAccountHealth, LateUsage,
-  LatePost, CreatePostBody, UpdatePostBody,
+  LatePost, CreatePostBody, UpdatePostBody, PlatformEntry,
   LateAnalyticsEntry, LateDailyMetric, LateFollowerStat, LateTimelineEntry, LateYouTubeView,
   LateQueue, CreateQueueBody, UpdateQueueBody, LateQueueSlot,
   LateConversation, LateMessage, LateSendResult,
@@ -119,6 +119,40 @@ export class LateApiClient {
 
   async getUsageStats(): Promise<LateUsage> {
     return this.request<LateUsage>('GET', '/usage');
+  }
+
+  async resolvePlatforms(platformNames: string[]): Promise<PlatformEntry[]> {
+    const accounts = await this.listAccounts();
+    const resolved: PlatformEntry[] = [];
+
+    for (const name of platformNames) {
+      const normalized = name.toLowerCase();
+      const account = accounts.find(
+        (a) => a.platform.toLowerCase() === normalized && a.isActive,
+      );
+
+      if (!account) {
+        const available = accounts
+          .filter((a) => a.isActive)
+          .map((a) => a.platform)
+          .join(', ');
+        throw new Error(
+          `No active account found for platform "${name}". Available: ${available || 'none'}`,
+        );
+      }
+
+      const profileId = typeof account.profileId === 'string'
+        ? account.profileId
+        : account.profileId._id;
+
+      resolved.push({
+        platform: account.platform,
+        accountId: account._id,
+        profileId,
+      });
+    }
+
+    return resolved;
   }
 
   // ─── Posts ────────────────────────────────────────────────────────────────

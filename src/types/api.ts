@@ -78,9 +78,15 @@ export interface LatePost {
   title?: string;
 }
 
+export interface PlatformEntry {
+  platform: string;
+  accountId: string;
+  profileId: string;
+}
+
 export interface CreatePostBody {
   content: string;
-  platforms: string[];
+  platforms: PlatformEntry[];
   scheduledFor?: string;
   publishNow?: boolean;
   isDraft?: boolean;

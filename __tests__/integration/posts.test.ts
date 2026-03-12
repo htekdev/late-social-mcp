@@ -463,7 +463,11 @@ describe('get_post', () => {
 describe('create_post', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('creates a post with platforms', async () => {
+  it('creates a post with resolved platforms', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+      { platform: 'instagram', accountId: 'acc-ig', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'new-1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
@@ -476,25 +480,34 @@ describe('create_post', () => {
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain('scheduled successfully');
     expect(result.content[0].text).toContain('new-1');
+    expect(mockClient.resolvePlatforms).toHaveBeenCalledWith(['twitter', 'instagram']);
     expect(mockClient.createPost).toHaveBeenCalledWith({
       content: 'My new post',
-      platforms: ['twitter', 'instagram'],
+      platforms: [
+        { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+        { platform: 'instagram', accountId: 'acc-ig', profileId: 'prof-1' },
+      ],
       scheduledFor: '2025-08-01T12:00:00Z',
     });
   });
 
-  it('normalises x to twitter in platform list', async () => {
+  it('normalises x to twitter before resolving', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+      { platform: 'linkedin', accountId: 'acc-li', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'draft' });
 
     const handler = getToolHandler('create_post');
     await handler({ content: 'test', platforms: 'x, linkedin' });
 
-    const callArgs = mockClient.createPost.mock.calls[0][0] as { platforms: string[] };
-    expect(callArgs.platforms).toContain('twitter');
-    expect(callArgs.platforms).toContain('linkedin');
+    expect(mockClient.resolvePlatforms).toHaveBeenCalledWith(['twitter', 'linkedin']);
   });
 
   it('handles publishNow flag', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'published' });
 
     const handler = getToolHandler('create_post');
@@ -508,6 +521,9 @@ describe('create_post', () => {
   });
 
   it('handles isDraft flag', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'instagram', accountId: 'acc-ig', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'draft' });
 
     const handler = getToolHandler('create_post');
@@ -521,6 +537,9 @@ describe('create_post', () => {
   });
 
   it('includes mediaUrls in request', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
@@ -543,6 +562,9 @@ describe('create_post', () => {
   });
 
   it('returns error on API failure', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockRejectedValue(new Error('Rate limit exceeded'));
 
     const handler = getToolHandler('create_post');
@@ -553,7 +575,23 @@ describe('create_post', () => {
     expect(result.content[0].text).toContain('Rate limit exceeded');
   });
 
+  it('returns error when platform has no active account', async () => {
+    mockClient.resolvePlatforms.mockRejectedValue(
+      new Error('No active account found for platform "facebook". Available: twitter, instagram'),
+    );
+
+    const handler = getToolHandler('create_post');
+    const result = await handler({ content: 'test', platforms: 'facebook' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('No active account found');
+    expect(result.content[0].text).toContain('facebook');
+  });
+
   it('shows scheduled time in response when provided', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'p1', status: 'scheduled' });
 
     const handler = getToolHandler('create_post');
@@ -765,6 +803,9 @@ describe('bulk_upload_posts', () => {
   });
 
   it('creates posts in bulk and reports results', async () => {
+    mockClient.resolvePlatforms
+      .mockResolvedValueOnce([{ platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' }])
+      .mockResolvedValueOnce([{ platform: 'instagram', accountId: 'acc-ig', profileId: 'prof-1' }]);
     mockClient.createPost
       .mockResolvedValueOnce({ _id: 'bulk-1' })
       .mockResolvedValueOnce({ _id: 'bulk-2' });
@@ -787,9 +828,11 @@ describe('bulk_upload_posts', () => {
   });
 
   it('reports partial failures', async () => {
+    mockClient.resolvePlatforms
+      .mockResolvedValueOnce([{ platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' }])
+      .mockRejectedValueOnce(new Error('No active account found for platform "invalid". Available: twitter'));
     mockClient.createPost
-      .mockResolvedValueOnce({ _id: 'ok-1' })
-      .mockRejectedValueOnce(new Error('Invalid platform'));
+      .mockResolvedValueOnce({ _id: 'ok-1' });
 
     const handler = getToolHandler('bulk_upload_posts');
     const csv = [
@@ -802,7 +845,7 @@ describe('bulk_upload_posts', () => {
 
     expect(result.content[0].text).toContain('Created: 1');
     expect(result.content[0].text).toContain('Failed: 1');
-    expect(result.content[0].text).toContain('Invalid platform');
+    expect(result.content[0].text).toContain('No active account found');
   });
 
   it('returns error for row with empty content', async () => {
@@ -826,6 +869,9 @@ describe('bulk_upload_posts', () => {
   });
 
   it('handles CSV with quoted fields containing commas', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'q1' });
 
     const handler = getToolHandler('bulk_upload_posts');
@@ -838,6 +884,11 @@ describe('bulk_upload_posts', () => {
   });
 
   it('splits platforms on pipe and semicolon delimiters', async () => {
+    mockClient.resolvePlatforms.mockResolvedValue([
+      { platform: 'twitter', accountId: 'acc-tw', profileId: 'prof-1' },
+      { platform: 'instagram', accountId: 'acc-ig', profileId: 'prof-1' },
+      { platform: 'linkedin', accountId: 'acc-li', profileId: 'prof-1' },
+    ]);
     mockClient.createPost.mockResolvedValue({ _id: 'multi-1' });
 
     const handler = getToolHandler('bulk_upload_posts');
@@ -845,7 +896,8 @@ describe('bulk_upload_posts', () => {
 
     await handler({ csvContent: csv });
 
-    const callArgs = mockClient.createPost.mock.calls[0][0] as { platforms: string[] };
-    expect(callArgs.platforms).toEqual(['twitter', 'instagram', 'linkedin']);
+    expect(mockClient.resolvePlatforms).toHaveBeenCalledWith(['twitter', 'instagram', 'linkedin']);
+    const callArgs = mockClient.createPost.mock.calls[0][0] as { platforms: Array<{ platform: string }> };
+    expect(callArgs.platforms.map((p) => p.platform)).toEqual(['twitter', 'instagram', 'linkedin']);
   });
 });
