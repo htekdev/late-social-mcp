@@ -159,6 +159,20 @@ Import an existing config into the server with `import_schedule_config`, or view
 
 All configuration files are **CWD-relative** — the server reads and writes config in whichever directory you run it from.
 
+## Optional X/Twitter Source Context
+
+late-social-mcp should stay responsible for account selection, approvals,
+scheduling, publishing, analytics, messages, comments, reviews, media, and
+webhooks. If an agent needs reviewed X/Twitter source evidence before drafting
+or scheduling a post, collect that evidence in an approved OpenClaw workflow
+such as [TweetClaw](https://github.com/Xquik-dev/tweetclaw), then pass only the
+reviewed handles, post URLs, post IDs, excerpts, or summary notes into the Late
+workflow.
+
+Keep credentials and account sessions separate between tools. Do not transfer
+API keys, cookies, sessions, or access tokens. Treat TweetClaw output as source
+context for review and planning, not as publishing approval.
+
 ## Development
 
 ```bash
