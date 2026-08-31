@@ -1,0 +1,51 @@
+{
+  "@modelcontextprotocol/sdk": {
+    "current": "1.27.1",
+    "wanted": "1.30.0",
+    "latest": "1.30.0",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/@modelcontextprotocol/sdk"
+  },
+  "@types/node": {
+    "current": "25.3.5",
+    "wanted": "25.9.5",
+    "latest": "26.4.0",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/@types/node"
+  },
+  "@vitest/coverage-v8": {
+    "current": "4.0.18",
+    "wanted": "4.1.11",
+    "latest": "4.1.11",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/@vitest/coverage-v8"
+  },
+  "esbuild": {
+    "current": "0.27.3",
+    "wanted": "0.27.7",
+    "latest": "0.28.2",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/esbuild"
+  },
+  "typescript": {
+    "current": "5.9.3",
+    "wanted": "5.9.3",
+    "latest": "7.0.2",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/typescript"
+  },
+  "vitest": {
+    "current": "4.0.18",
+    "wanted": "4.1.11",
+    "latest": "4.1.11",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/vitest"
+  },
+  "zod": {
+    "current": "4.3.6",
+    "wanted": "4.5.4",
+    "latest": "4.5.4",
+    "dependent": "late-social-mcp",
+    "location": "/home/runner/work/late-social-mcp/late-social-mcp/node_modules/zod"
+  }
+}
